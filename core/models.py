@@ -22,6 +22,7 @@ class ProblemData:
     output_format: str = ""
     constraints: str = ""
     notes: Optional[str] = None
+    tutorial: str = ""  # Detailed editorial/tutorial in LaTeX
     time_limit_ms: int = 1000
     memory_limit_mb: int = 256
     checker_type: str = "std::wcmp.cpp"
@@ -50,6 +51,7 @@ class GeneratedCode:
     solution_cpp: str
     validator_cpp: str
     generator_cpp: str
+    brute_force_cpp: str = ""  # Correct naive O(N^2) or O(2^N) solution for double stress-testing
     checker_type: str = "std::wcmp.cpp"  # std::wcmp.cpp, std::ncmp.cpp, std::rcmp6.cpp, std::yesno.cpp, or custom
     custom_checker_cpp: Optional[str] = None
     tests: List[TestCase] = field(default_factory=list)

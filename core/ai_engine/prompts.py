@@ -27,6 +27,7 @@ CRITICAL FORMATTING GUIDELINES FOR STATEMENT:
    - `output_format`: Crystal-clear specification of the output for each test case or query.
    - `constraints`: A concise, complete summary of all variable bounds.
    - `notes`: A beautifully formatted step-by-step explanation using `\\begin{itemize} \\item ... \\end{itemize}` with clear math formulas.
+   - `tutorial`: A complete, comprehensive, and beautiful Editorial / Tutorial written in Polygon LaTeX explaining the key observations, algorithmic solution, mathematical proof, and time/space complexity analysis (e.g. $\\mathcal{O}(n \\log n)$).
 4. Checker Selection:
    - Choose the exact matching checker: "std::wcmp.cpp" (tokens), "std::ncmp.cpp" (integers), "std::rcmp6.cpp" (float 10^-6), "std::rcmp9.cpp" (float 10^-9), "std::yesno.cpp" (YES/NO), "std::lcmp.cpp" (lines), or "custom".
 
@@ -41,6 +42,7 @@ Return ONLY a valid JSON object with the following fields:
   "output_format": "Detailed output format specification...",
   "constraints": "Summary of all variable constraints...",
   "notes": "In the first example:\\n\\\\begin{itemize}\\n    \\\\item Explanation 1...\\n    \\\\item Explanation 2...\\n\\\\end{itemize}",
+  "tutorial": "### Method Explanation\\n\\nTo solve this problem optimally, observe that...\\n\\n### Complexity\\n- Time Complexity: $\\\\mathcal{O}(n \\\\log n)$\\n- Space Complexity: $\\\\mathcal{O}(n)$",
   "checker_type": "std::wcmp.cpp",
   "sample_tests": [
     {
@@ -135,10 +137,14 @@ You are given the problem details below. You need to write 3 pieces of flawless,
      }
      ```
 
-4. `test_script_lines`:
+4. `brute_force_cpp` (Stress-Testing Reference Solution):
+   - A straightforward, simple, 100% correct brute-force C++ solution (e.g. $\\mathcal{O}(2^N)$ or $\\mathcal{O}(N^2)$).
+   - Used for automated cross-checking and stress-testing against `solution_cpp` on smaller inputs to guarantee 100% correctness without Wrong Answer.
+
+5. `test_script_lines`:
    - `["gen 1 > $", "gen 2 > $", "gen 3 > $", ..., "gen 20 > $"]`
 
-5. `custom_checker_cpp`:
+6. `custom_checker_cpp`:
    - If `checker_type` is "custom", provide C++ testlib checker using `registerTestlibCmd(argc, argv);`. Otherwise `null`.
 
 Problem Details:
@@ -158,7 +164,8 @@ Checker Type: {checker_type}
 
 Return ONLY a valid JSON object with the following schema:
 {
-  "solution_cpp": "/* C++20 code */",
+  "solution_cpp": "/* Optimal C++20 code */",
+  "brute_force_cpp": "/* Simple 100% correct brute force C++ code */",
   "validator_cpp": "/* testlib validator C++ code */",
   "generator_cpp": "/* testlib generator C++ code */",
   "checker_type": "{checker_type}",

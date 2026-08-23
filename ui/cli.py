@@ -16,6 +16,7 @@ from core.ai_engine.pipeline import AIPipeline
 from core.polygon.client import PolygonClient, PolygonAPIError
 from core.polygon.automation import PolygonAutomation
 from core.exporter.excel_exporter import ExcelExporter
+from core.notifier import Notifier
 
 console = Console(legacy_windows=False, force_terminal=True)
 
@@ -38,6 +39,7 @@ class AutoUploaderCLI:
         )
         self.ai_pipeline = AIPipeline(self.llm_client)
         self.exporter = ExcelExporter(output_path=self.config.export.excel_file_path)
+        self.notifier = Notifier(self.config.notifications)
 
     def print_banner(self) -> None:
         console.clear()
@@ -155,6 +157,12 @@ class AutoUploaderCLI:
             console.print(f"[dim]📁 Da cap nhat vao file Excel: {excel_file}[/dim]")
         except Exception as ex:
             console.print(f"[yellow]⚠️ Loi cap nhat Excel: {ex}[/yellow]")
+
+        # 11. Send Notifications (Discord / Telegram)
+        try:
+            self.notifier.notify_problem_completed(record)
+        except Exception:
+            pass
 
         return record
 

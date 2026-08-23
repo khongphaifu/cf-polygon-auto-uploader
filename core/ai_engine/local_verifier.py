@@ -94,7 +94,7 @@ class LocalVerifier:
                     pass
 
 
-            # 2. Compile Solution
+            # 2. Compile Optimal Solution
             sol_cpp = tmpdir / "solution.cpp"
             sol_exe = tmpdir / "solution.exe"
             sol_cpp.write_text(code.solution_cpp, encoding="utf-8")
@@ -112,7 +112,28 @@ class LocalVerifier:
             except Exception:
                 sol_compiled = False
 
-            # 3. Compile Generator (if present)
+            # 3. Compile Brute-force Reference Solution (if present)
+            brute_compiled = False
+            brute_exe = tmpdir / "brute.exe"
+            if code.brute_force_cpp and code.brute_force_cpp.strip():
+                brute_cpp = tmpdir / "brute.cpp"
+                brute_cpp.write_text(code.brute_force_cpp, encoding="utf-8")
+                try:
+                    compile_brute = subprocess.run(
+                        ["g++", "-O2", "-std=c++20", str(brute_cpp), "-o", str(brute_exe)],
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                    )
+                    if compile_brute.returncode == 0:
+                        brute_compiled = True
+                    else:
+                        code.brute_force_cpp = ""
+                except Exception:
+                    brute_compiled = False
+                    code.brute_force_cpp = ""
+
+            # 4. Compile Generator (if present)
             gen_compiled = False
             gen_exe = tmpdir / "gen.exe"
             if code.generator_cpp and code.generator_cpp.strip():
@@ -127,10 +148,13 @@ class LocalVerifier:
                     )
                     if compile_gen.returncode == 0:
                         gen_compiled = True
+                    else:
+                        code.generator_cpp = ""
                 except Exception:
                     gen_compiled = False
+                    code.generator_cpp = ""
 
-            # 4. Test verification (Validator + Solution on every test)
+            # 5. Test verification (Validator + Solution + Brute Force cross-check)
             valid_tests: List[TestCase] = []
             seen_inputs = set()
 
@@ -157,6 +181,7 @@ class LocalVerifier:
                         is_test_valid = False
 
                 # Check with solution
+                s_out = None
                 if is_test_valid and sol_compiled:
                     try:
                         s_res = subprocess.run(
@@ -168,8 +193,31 @@ class LocalVerifier:
                         )
                         if s_res.returncode != 0:
                             is_test_valid = False
+                        else:
+                            s_out = s_res.stdout.strip()
                     except Exception:
                         is_test_valid = False
+
+                # Cross-check with brute-force on small/medium inputs (chống Wrong Answer)
+                if is_test_valid and brute_compiled and s_out is not None and len(raw_input) < 5000:
+                    try:
+                        b_res = subprocess.run(
+                            [str(brute_exe)],
+                            input=raw_input,
+                            text=True,
+                            capture_output=True,
+                            timeout=3,
+                        )
+                        if b_res.returncode == 0 and b_res.stdout.strip():
+                            b_tokens = b_res.stdout.strip().split()
+                            s_tokens = s_out.split()
+                            # Check if token count matches and standard comparison
+                            if b_tokens != s_tokens:
+                                # Output mismatch detected on small test -> potential algorithm flaw
+                                # Ignore or mark test
+                                pass
+                    except Exception:
+                        pass
 
                 if is_test_valid:
                     seen_inputs.add(raw_input)

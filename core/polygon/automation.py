@@ -43,7 +43,7 @@ class PolygonAutomation:
             input_format=problem.input_format,
             output_format=problem.output_format,
             notes=problem.notes or "",
-            tutorial="",
+            tutorial=problem.tutorial or "",
         )
 
     def setup_code_files(self, problem_id: int, code: GeneratedCode) -> None:
@@ -61,13 +61,16 @@ class PolygonAutomation:
 
         # 2. Generator
         if code.generator_cpp:
-            self.client.save_file(
-                problem_id=problem_id,
-                file_type="source",
-                name="gen.cpp",
-                content=code.generator_cpp,
-                check_existing=False,
-            )
+            try:
+                self.client.save_file(
+                    problem_id=problem_id,
+                    file_type="source",
+                    name="gen.cpp",
+                    content=code.generator_cpp,
+                    check_existing=False,
+                )
+            except Exception:
+                pass
 
         # 3. Checker
         if code.checker_type == "custom" and code.custom_checker_cpp:
@@ -83,7 +86,7 @@ class PolygonAutomation:
             checker = code.checker_type if code.checker_type.startswith("std::") else f"std::{code.checker_type}"
             self.client.set_checker(problem_id=problem_id, checker_name=checker)
 
-        # 4. Main Solution
+        # 4. Main Solution (MA = Main correct solution)
         if code.solution_cpp:
             self.client.save_solution(
                 problem_id=problem_id,
@@ -92,6 +95,19 @@ class PolygonAutomation:
                 tag="MA",
                 check_existing=False,
             )
+
+        # 5. Brute Force Reference Solution (OK = Correct secondary solution)
+        if code.brute_force_cpp:
+            try:
+                self.client.save_solution(
+                    problem_id=problem_id,
+                    name="brute.cpp",
+                    content=code.brute_force_cpp,
+                    tag="OK",
+                    check_existing=False,
+                )
+            except Exception:
+                pass
 
     def setup_tests(self, problem_id: int, problem: ProblemData, code: GeneratedCode) -> None:
         """Upload sample tests (marked for statements) and generated tests (exactly 20).

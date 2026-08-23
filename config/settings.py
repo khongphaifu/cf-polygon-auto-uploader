@@ -33,6 +33,14 @@ class GenerationConfig:
 
 
 @dataclass
+class NotificationConfig:
+    enabled: bool = False
+    discord_webhook_url: Optional[str] = None
+    telegram_bot_token: Optional[str] = None
+    telegram_chat_id: Optional[str] = None
+
+
+@dataclass
 class ExportConfig:
     excel_file_path: str = "problems_summary.xlsx"
 
@@ -43,6 +51,7 @@ class AppConfig:
     ai: AIConfig = field(default_factory=AIConfig)
     generation: GenerationConfig = field(default_factory=GenerationConfig)
     export: ExportConfig = field(default_factory=ExportConfig)
+    notifications: NotificationConfig = field(default_factory=NotificationConfig)
 
 
 def get_project_root() -> Path:

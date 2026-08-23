@@ -47,6 +47,7 @@ class AIPipeline:
             output_format=parsed_json.get("output_format", ""),
             constraints=parsed_json.get("constraints", ""),
             notes=parsed_json.get("notes", ""),
+            tutorial=parsed_json.get("tutorial", ""),
             time_limit_ms=int(parsed_json.get("time_limit_ms", 1000)),
             memory_limit_mb=int(parsed_json.get("memory_limit_mb", 256)),
             checker_type=parsed_json.get("checker_type", "std::wcmp.cpp"),
@@ -112,6 +113,7 @@ class AIPipeline:
         code_result = self.llm.generate_json(code_prompt)
 
         sol_cpp = self._sanitize_cpp_code(code_result.get("solution_cpp", ""), is_testlib=False)
+        brute_cpp = self._sanitize_cpp_code(code_result.get("brute_force_cpp", ""), is_testlib=False)
         val_cpp = self._sanitize_cpp_code(code_result.get("validator_cpp", ""), is_testlib=True)
         gen_cpp = self._sanitize_cpp_code(code_result.get("generator_cpp", ""), is_testlib=True)
         chk_cpp = code_result.get("custom_checker_cpp")
@@ -166,6 +168,7 @@ class AIPipeline:
 
         gen_code = GeneratedCode(
             solution_cpp=sol_cpp,
+            brute_force_cpp=brute_cpp,
             validator_cpp=val_cpp,
             generator_cpp=gen_cpp,
             checker_type=code_result.get("checker_type", problem.checker_type or "std::wcmp.cpp"),
