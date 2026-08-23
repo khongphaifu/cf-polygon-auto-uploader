@@ -1,0 +1,22 @@
+polygon:
+  api_key: "YOUR_POLYGON_API_KEY"
+  api_secret: "YOUR_POLYGON_API_SECRET"
+  api_url: "https://polygon.codeforces.com/api/"
+
+ai:
+  provider: "gemini"
+  gemini_api_key: "YOUR_GEMINI_API_KEY"
+  gemini_backup_keys:
+    # - "AIzaSy..."
+  model_name: "gemini-3.7-flash"
+
+generation:
+  num_tests: 20
+  include_samples_in_statements: true
+  default_time_limit_ms: 1000
+  default_memory_limit_mb: 256
+  auto_grant_access_to_codeforces: true
+  auto_package: true
+
+export:
+  excel_file_path: "problems_summary.xlsx"

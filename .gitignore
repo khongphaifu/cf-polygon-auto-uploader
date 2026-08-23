@@ -1,0 +1,31 @@
+# Virtual Environment
+.venv/
+env/
+venv/
+EIV/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Temporary Executables & Object files
+*.exe
+*.o
+*.obj
+validator.exe
+solution.exe
+gen.exe
+check.exe
+
+# OS / Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Sensitive API keys
+config/config.yaml
