@@ -1,9 +1,15 @@
 import json
 import re
 from typing import Dict, Any, List
+from pathlib import Path
 from core.models import ProblemData, SampleTestCase, GeneratedCode, TestCase
 from core.ai_engine.llm_client import LLMClient
-from core.ai_engine.prompts import PARSE_PROBLEM_PROMPT, GENERATE_CODE_PROMPT, GENERATE_TESTS_PROMPT
+from core.ai_engine.prompts import (
+    PARSE_PROBLEM_PROMPT,
+    GENERATE_CODE_PROMPT,
+    GENERATE_TESTS_PROMPT,
+    PARSE_IMAGE_PROMPT,
+)
 from core.ai_engine.local_verifier import LocalVerifier
 
 
@@ -13,12 +19,20 @@ class AIPipeline:
     def __init__(self, llm_client: LLMClient):
         self.llm = llm_client
 
-    def parse_problem_content(self, source_url: str, raw_content: str) -> ProblemData:
-        """Parse raw crawled content into structured ProblemData."""
-        prompt = PARSE_PROBLEM_PROMPT.replace("{raw_content}", raw_content[:25000])
-        parsed_json = self.llm.generate_json(prompt)
+    def parse_problem_from_image(self, image_path: Path) -> ProblemData:
+        """Parse problem statement, formulas, constraints and samples from an image/PDF."""
+        image_bytes = image_path.read_bytes()
+        suffix = image_path.suffix.lower()
+        mime_type = "image/jpeg" if suffix in [".jpg", ".jpeg"] else ("image/webp" if suffix == ".webp" else "image/png")
         
-        # Format sample tests
+        parsed_json = self.llm.generate_from_image(
+            prompt=PARSE_IMAGE_PROMPT,
+            image_bytes=image_bytes,
+            mime_type=mime_type,
+        )
+        return self._build_problem_data_from_json(str(image_path), parsed_json, raw_content="[Parsed from Image]")
+
+    def _build_problem_data_from_json(self, source_url: str, parsed_json: Dict[str, Any], raw_content: str) -> ProblemData:
         sample_tests = []
         for s in parsed_json.get("sample_tests", []):
             sample_tests.append(
@@ -29,7 +43,6 @@ class AIPipeline:
                 )
             )
 
-        # Sanitize short_name
         title = parsed_json.get("title", "Problem")
         short_name = parsed_json.get("short_name", "")
         if not short_name:
@@ -54,6 +67,12 @@ class AIPipeline:
             sample_tests=sample_tests,
             raw_html=raw_content,
         )
+
+    def parse_problem_content(self, source_url: str, raw_content: str) -> ProblemData:
+        """Parse raw crawled content into structured ProblemData."""
+        prompt = PARSE_PROBLEM_PROMPT.replace("{raw_content}", raw_content[:25000])
+        parsed_json = self.llm.generate_json(prompt)
+        return self._build_problem_data_from_json(source_url, parsed_json, raw_content)
 
     @staticmethod
     def _sanitize_cpp_code(code: str, is_testlib: bool = False) -> str:
@@ -114,6 +133,19 @@ class AIPipeline:
 
         sol_cpp = self._sanitize_cpp_code(code_result.get("solution_cpp", ""), is_testlib=False)
         brute_cpp = self._sanitize_cpp_code(code_result.get("brute_force_cpp", ""), is_testlib=False)
+        tl_cpp = self._sanitize_cpp_code(code_result.get("solution_tl_cpp", ""), is_testlib=False)
+        wa_cpp = self._sanitize_cpp_code(code_result.get("solution_wa_cpp", ""), is_testlib=False)
+        py_code = code_result.get("solution_py", "")
+        if py_code:
+            py_code = py_code.strip()
+            if py_code.startswith("```"):
+                lines = py_code.splitlines()
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                py_code = "\n".join(lines).strip()
+
         val_cpp = self._sanitize_cpp_code(code_result.get("validator_cpp", ""), is_testlib=True)
         gen_cpp = self._sanitize_cpp_code(code_result.get("generator_cpp", ""), is_testlib=True)
         chk_cpp = code_result.get("custom_checker_cpp")
@@ -169,6 +201,9 @@ class AIPipeline:
         gen_code = GeneratedCode(
             solution_cpp=sol_cpp,
             brute_force_cpp=brute_cpp,
+            solution_tl_cpp=tl_cpp,
+            solution_wa_cpp=wa_cpp,
+            solution_py=py_code,
             validator_cpp=val_cpp,
             generator_cpp=gen_cpp,
             checker_type=code_result.get("checker_type", problem.checker_type or "std::wcmp.cpp"),

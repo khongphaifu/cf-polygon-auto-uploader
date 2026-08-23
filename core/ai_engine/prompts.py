@@ -141,10 +141,21 @@ You are given the problem details below. You need to write 3 pieces of flawless,
    - A straightforward, simple, 100% correct brute-force C++ solution (e.g. $\\mathcal{O}(2^N)$ or $\\mathcal{O}(N^2)$).
    - Used for automated cross-checking and stress-testing against `solution_cpp` on smaller inputs to guarantee 100% correctness without Wrong Answer.
 
-5. `test_script_lines`:
+5. `solution_tl_cpp` (Time Limit Exceeded Test Solution):
+   - An intentionally slow, naive $\\mathcal{O}(N^2)$ or unoptimized algorithm.
+   - Used on Polygon with tag `TL` to mathematically prove that our test suite strictly kills slow solutions.
+
+6. `solution_wa_cpp` (Wrong Answer Test Solution):
+   - An intentionally flawed solution (e.g. naive greedy, ignoring a subtle corner case, or using 32-bit `int` that overflows).
+   - Used on Polygon with tag `WA` to mathematically prove that our test suite strictly catches incorrect solutions.
+
+7. `solution_py` (Python 3 Reference Solution):
+   - A clean, standard Python 3 solution.
+
+8. `test_script_lines`:
    - `["gen 1 > $", "gen 2 > $", "gen 3 > $", ..., "gen 20 > $"]`
 
-6. `custom_checker_cpp`:
+9. `custom_checker_cpp`:
    - If `checker_type` is "custom", provide C++ testlib checker using `registerTestlibCmd(argc, argv);`. Otherwise `null`.
 
 Problem Details:
@@ -166,6 +177,9 @@ Return ONLY a valid JSON object with the following schema:
 {
   "solution_cpp": "/* Optimal C++20 code */",
   "brute_force_cpp": "/* Simple 100% correct brute force C++ code */",
+  "solution_tl_cpp": "/* Naive slow O(N^2) C++ code */",
+  "solution_wa_cpp": "/* Flawed greedy/overflow C++ code */",
+  "solution_py": "# Python 3 solution",
   "validator_cpp": "/* testlib validator C++ code */",
   "generator_cpp": "/* testlib generator C++ code */",
   "checker_type": "{checker_type}",
@@ -225,6 +239,39 @@ Return ONLY a valid JSON object with the following schema:
       "test_index": 1,
       "input_data": "1\\n5\\n",
       "description": "Minimal example test"
+    }
+  ]
+}
+"""
+
+PARSE_IMAGE_PROMPT = """You are an International Grandmaster Competitive Programmer and Polygon Problem Setter.
+Analyze the provided image of a competitive programming problem (statement, math formulas, constraints, input/output, sample tests).
+Extract and structure all information into a flawless Codeforces/Polygon LaTeX format.
+
+Rules:
+1. Translate fully to English if the original image is in another language (Vietnamese, Russian, etc.).
+2. Math & Formulas: Enclose all inline math in $...$ (e.g. $n$, $1 \\le n \\le 10^5$, $\\sum a_i$).
+3. Notes: Format using \\begin{itemize} \\item ... \\end{itemize}.
+4. Tutorial: Write a complete Editorial/Tutorial explaining the optimal algorithm and complexity \\mathcal{O}(\\dots).
+
+Return ONLY a valid JSON object with the following schema:
+{
+  "title": "Problem Title in English",
+  "short_name": "short-problem-name",
+  "time_limit_ms": 1000,
+  "memory_limit_mb": 256,
+  "legend": "Detailed problem description...",
+  "input_format": "Detailed input format specification...",
+  "output_format": "Detailed output format specification...",
+  "constraints": "Summary of all variable constraints...",
+  "notes": "\\begin{itemize}\\n    \\item Note 1...\\n\\end{itemize}",
+  "tutorial": "### Method Explanation\\n\\n...\\n\\n### Complexity\\n- Time: $\\mathcal{O}(n)$",
+  "checker_type": "std::wcmp.cpp",
+  "sample_tests": [
+    {
+      "input_text": "3\\n1 2 3\\n",
+      "output_text": "6\\n",
+      "explanation": "Sum is 6."
     }
   ]
 }

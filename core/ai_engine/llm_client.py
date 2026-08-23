@@ -192,3 +192,73 @@ class LLMClient:
                                 time.sleep(2)
 
         raise RuntimeError(f"Failed to generate content with Gemini API across all keys and models: {last_error}")
+
+    def generate_from_image(
+        self,
+        prompt: str,
+        image_bytes: bytes,
+        mime_type: str = "image/png",
+        max_retries: int = 3,
+    ) -> Dict[str, Any]:
+        """
+        Send multimodal vision request (image + prompt) to Gemini API with key rotation.
+        """
+        import base64
+
+        img_b64 = base64.b64encode(image_bytes).decode("utf-8")
+        chosen_model = self.model_name
+        model_candidates = [chosen_model]
+        for m in self.FALLBACK_MODELS:
+            if m not in model_candidates:
+                model_candidates.append(m)
+
+        last_error = None
+        for current_key in self.api_keys_pool:
+            for candidate_model in model_candidates:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{candidate_model}:generateContent?key={current_key}"
+                payload = {
+                    "contents": [
+                        {
+                            "role": "user",
+                            "parts": [
+                                {"text": prompt},
+                                {
+                                    "inlineData": {
+                                        "mimeType": mime_type,
+                                        "data": img_b64,
+                                    }
+                                },
+                            ],
+                        }
+                    ],
+                    "generationConfig": {
+                        "temperature": self.temperature,
+                        "maxOutputTokens": 8192,
+                        "responseMimeType": "application/json",
+                    },
+                }
+
+                for attempt in range(1, max_retries + 1):
+                    try:
+                        response = self.session.post(
+                            url,
+                            json=payload,
+                            headers={"Content-Type": "application/json"},
+                            timeout=120,
+                        )
+                        if response.status_code == 200:
+                            data = response.json()
+                            candidates = data.get("candidates", [])
+                            if not candidates:
+                                raise ValueError("No candidate in multimodal response")
+                            raw_text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                            return self._safe_json_loads(raw_text)
+                        elif response.status_code in [429, 503]:
+                            time.sleep(3 * attempt)
+                        else:
+                            break
+                    except Exception as e:
+                        last_error = e
+                        time.sleep(2)
+
+        raise RuntimeError(f"Failed to analyze image with Gemini Vision API: {last_error}")

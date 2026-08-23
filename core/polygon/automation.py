@@ -109,6 +109,45 @@ class PolygonAutomation:
             except Exception:
                 pass
 
+        # 6. Time Limit Exceeded Test Solution (TL = Time limit exceeded)
+        if code.solution_tl_cpp:
+            try:
+                self.client.save_solution(
+                    problem_id=problem_id,
+                    name="slow_tl.cpp",
+                    content=code.solution_tl_cpp,
+                    tag="TL",
+                    check_existing=False,
+                )
+            except Exception:
+                pass
+
+        # 7. Wrong Answer Test Solution (WA = Wrong answer)
+        if code.solution_wa_cpp:
+            try:
+                self.client.save_solution(
+                    problem_id=problem_id,
+                    name="flawed_wa.cpp",
+                    content=code.solution_wa_cpp,
+                    tag="WA",
+                    check_existing=False,
+                )
+            except Exception:
+                pass
+
+        # 8. Python 3 Reference Solution (OK)
+        if code.solution_py:
+            try:
+                self.client.save_solution(
+                    problem_id=problem_id,
+                    name="solution.py",
+                    content=code.solution_py,
+                    tag="OK",
+                    check_existing=False,
+                )
+            except Exception:
+                pass
+
     def setup_tests(self, problem_id: int, problem: ProblemData, code: GeneratedCode) -> None:
         """Upload sample tests (marked for statements) and generated tests (exactly 20).
         Uses checkExisting=False to overwrite tests at same index (Polygon: False=overwrite, True=fail-if-exists).

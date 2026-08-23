@@ -52,6 +52,9 @@ class GeneratedCode:
     validator_cpp: str
     generator_cpp: str
     brute_force_cpp: str = ""  # Correct naive O(N^2) or O(2^N) solution for double stress-testing
+    solution_tl_cpp: str = ""  # Intentionally slow O(N^2) solution tagged TL on Polygon
+    solution_wa_cpp: str = ""  # Intentionally flawed greedy/overflow solution tagged WA on Polygon
+    solution_py: str = ""      # Python 3 solution for cross-language compatibility
     checker_type: str = "std::wcmp.cpp"  # std::wcmp.cpp, std::ncmp.cpp, std::rcmp6.cpp, std::yesno.cpp, or custom
     custom_checker_cpp: Optional[str] = None
     tests: List[TestCase] = field(default_factory=list)
