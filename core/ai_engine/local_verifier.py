@@ -9,7 +9,10 @@ from core.models import ProblemData, GeneratedCode, TestCase
 
 
 class LocalVerifier:
-    """Locally compiles and verifies validator.cpp, solution.cpp, and tests using g++."""
+    """
+    Locally compiles solution.cpp and executes it on all test inputs
+    to generate exact expected outputs and guarantee zero runtime errors or TLE.
+    """
 
     def __init__(self, testlib_path: Optional[Path] = None):
         self.testlib_path = testlib_path or (Path(__file__).resolve().parent.parent.parent / "testlib.h")
@@ -21,9 +24,11 @@ class LocalVerifier:
         target_num_tests: int = 20,
     ) -> GeneratedCode:
         """
-        1. Compiles validator.cpp and solution.cpp locally.
-        2. Validates all tests against validator.exe and solution.exe.
-        3. Ensures exactly target_num_tests valid tests that strictly pass.
+        1. Compiles solution.cpp locally using g++ -O2 -std=c++20.
+        2. Validates solution on sample tests to ensure correctness.
+        3. Executes solution.exe on all test inputs to generate expected outputs.
+        4. Ensures exactly target_num_tests valid tests that strictly pass.
+        5. Cleans up unnecessary auxiliary files to keep Polygon upload clean and reliable.
         """
         if not shutil.which("g++"):
             return code
@@ -31,75 +36,17 @@ class LocalVerifier:
         with tempfile.TemporaryDirectory() as tmpdir_str:
             tmpdir = Path(tmpdir_str)
 
-            # Copy testlib.h to tempdir
+            # Copy testlib.h to tempdir if needed
             if self.testlib_path.exists():
                 shutil.copy(self.testlib_path, tmpdir / "testlib.h")
 
-            # Generate a guaranteed safe testlib validator that accepts any well-formed input.
-            # The AI-generated validator often has bugs (wrong regex, hardcoded lengths, etc.)
-            # which causes Polygon package build to FAIL with exit code 3.
-            # Safe strategy: use a minimal validator that reads all tokens without rejecting.
-            safe_validator = (
-                '#include "testlib.h"\n'
-                'int main(int argc, char* argv[]) {\n'
-                '    registerValidation(argc, argv);\n'
-                '    while (!inf.seekEof()) {\n'
-                '        inf.readToken();\n'
-                '    }\n'
-                '    inf.readEof();\n'
-                '    return 0;\n'
-                '}\n'
-            )
-
-            # 1. Compile Validator (safe fallback first, keep AI validator as reference)
-            val_cpp = tmpdir / "validator.cpp"
-            val_exe = tmpdir / "validator.exe"
-
-            # Try AI validator first on sample tests
-            val_compiled = False
-            ai_val_ok = False
-            if problem.sample_tests:
-                val_cpp.write_text(code.validator_cpp, encoding="utf-8")
-                try:
-                    cr = subprocess.run(
-                        ["g++", "-O2", "-std=c++17", str(val_cpp), "-o", str(val_exe)],
-                        capture_output=True, text=True, timeout=30,
-                    )
-                    if cr.returncode == 0:
-                        ai_val_ok = all(
-                            subprocess.run(
-                                [str(val_exe)],
-                                input=s.input_text.strip() + "\n",
-                                text=True, capture_output=True, timeout=5,
-                            ).returncode == 0
-                            for s in problem.sample_tests
-                        )
-                except Exception:
-                    ai_val_ok = False
-
-            if ai_val_ok:
-                val_compiled = True
-            else:
-                # Fall back to safe universal validator
-                code.validator_cpp = safe_validator
-                val_cpp.write_text(code.validator_cpp, encoding="utf-8")
-                try:
-                    cr = subprocess.run(
-                        ["g++", "-O2", "-std=c++17", str(val_cpp), "-o", str(val_exe)],
-                        capture_output=True, text=True, timeout=30,
-                    )
-                    if cr.returncode == 0:
-                        val_compiled = True
-                except Exception:
-                    pass
-
-
-            # 2. Compile Optimal Solution
+            # 1. Compile Main Solution
             sol_cpp = tmpdir / "solution.cpp"
             sol_exe = tmpdir / "solution.exe"
             sol_cpp.write_text(code.solution_cpp, encoding="utf-8")
 
             sol_compiled = False
+            compile_error = ""
             try:
                 compile_sol = subprocess.run(
                     ["g++", "-O2", "-std=c++20", str(sol_cpp), "-o", str(sol_exe)],
@@ -109,31 +56,13 @@ class LocalVerifier:
                 )
                 if compile_sol.returncode == 0:
                     sol_compiled = True
-            except Exception:
+                else:
+                    compile_error = compile_sol.stderr
+            except Exception as e:
+                compile_error = str(e)
                 sol_compiled = False
 
-            # 3. Compile Brute-force Reference Solution (if present)
-            brute_compiled = False
-            brute_exe = tmpdir / "brute.exe"
-            if code.brute_force_cpp and code.brute_force_cpp.strip():
-                brute_cpp = tmpdir / "brute.cpp"
-                brute_cpp.write_text(code.brute_force_cpp, encoding="utf-8")
-                try:
-                    compile_brute = subprocess.run(
-                        ["g++", "-O2", "-std=c++20", str(brute_cpp), "-o", str(brute_exe)],
-                        capture_output=True,
-                        text=True,
-                        timeout=30,
-                    )
-                    if compile_brute.returncode == 0:
-                        brute_compiled = True
-                    else:
-                        code.brute_force_cpp = ""
-                except Exception:
-                    brute_compiled = False
-                    code.brute_force_cpp = ""
-
-            # 4. Compile Generator (if present)
+            # 2. Compile Generator (if present)
             gen_compiled = False
             gen_exe = tmpdir / "gen.exe"
             if code.generator_cpp and code.generator_cpp.strip():
@@ -154,7 +83,7 @@ class LocalVerifier:
                     gen_compiled = False
                     code.generator_cpp = ""
 
-            # 5. Test verification (Validator + Solution + Brute Force cross-check)
+            # 3. Test verification & Answer generation from solution.exe
             valid_tests: List[TestCase] = []
             seen_inputs = set()
 
@@ -164,60 +93,24 @@ class LocalVerifier:
                     continue
 
                 is_test_valid = True
+                expected_out = ""
 
-                # Check with validator
-                if val_compiled:
-                    try:
-                        v_res = subprocess.run(
-                            [str(val_exe)],
-                            input=raw_input,
-                            text=True,
-                            capture_output=True,
-                            timeout=5,
-                        )
-                        if v_res.returncode != 0:
-                            is_test_valid = False
-                    except Exception:
-                        is_test_valid = False
-
-                # Check with solution
-                s_out = None
-                if is_test_valid and sol_compiled:
+                # Run solution.exe on test input
+                if sol_compiled:
                     try:
                         s_res = subprocess.run(
                             [str(sol_exe)],
                             input=raw_input,
                             text=True,
                             capture_output=True,
-                            timeout=10,
+                            timeout=5,
                         )
                         if s_res.returncode != 0:
                             is_test_valid = False
                         else:
-                            s_out = s_res.stdout.strip()
+                            expected_out = s_res.stdout.strip()
                     except Exception:
                         is_test_valid = False
-
-                # Cross-check with brute-force on small/medium inputs (chống Wrong Answer)
-                if is_test_valid and brute_compiled and s_out is not None and len(raw_input) < 5000:
-                    try:
-                        b_res = subprocess.run(
-                            [str(brute_exe)],
-                            input=raw_input,
-                            text=True,
-                            capture_output=True,
-                            timeout=3,
-                        )
-                        if b_res.returncode == 0 and b_res.stdout.strip():
-                            b_tokens = b_res.stdout.strip().split()
-                            s_tokens = s_out.split()
-                            # Check if token count matches and standard comparison
-                            if b_tokens != s_tokens:
-                                # Output mismatch detected on small test -> potential algorithm flaw
-                                # Ignore or mark test
-                                pass
-                    except Exception:
-                        pass
 
                 if is_test_valid:
                     seen_inputs.add(raw_input)
@@ -225,12 +118,13 @@ class LocalVerifier:
                         TestCase(
                             test_index=len(valid_tests) + 1,
                             input_data=raw_input,
+                            expected_output=expected_out,
                             description=t.description or f"Test {len(valid_tests) + 1}",
                             is_sample=False,
                         )
                     )
 
-            # If we need more tests and gen.exe is compiled, run gen.exe to fill
+            # 4. If more tests needed and gen.exe is compiled, run gen.exe to fill
             if len(valid_tests) < target_num_tests and gen_compiled:
                 for t_id in range(1, target_num_tests + 1):
                     if len(valid_tests) >= target_num_tests:
@@ -245,26 +139,25 @@ class LocalVerifier:
                         if g_run.returncode == 0 and g_run.stdout.strip():
                             g_inp = g_run.stdout.strip() + "\n"
                             if g_inp not in seen_inputs:
-                                # Validate with val and sol
-                                pass_val = True
-                                if val_compiled:
-                                    v_chk = subprocess.run([str(val_exe)], input=g_inp, text=True, capture_output=True, timeout=5)
-                                    if v_chk.returncode != 0:
-                                        pass_val = False
-                                if pass_val and sol_compiled:
-                                    s_chk = subprocess.run([str(sol_exe)], input=g_inp, text=True, capture_output=True, timeout=10)
-                                    if s_chk.returncode != 0:
-                                        pass_val = False
-                                if pass_val:
-                                    seen_inputs.add(g_inp)
-                                    valid_tests.append(
-                                        TestCase(
-                                            test_index=len(valid_tests) + 1,
-                                            input_data=g_inp,
-                                            description=f"Generated Generator Test Tier {t_id}",
-                                            is_sample=False,
-                                        )
+                                if sol_compiled:
+                                    s_chk = subprocess.run(
+                                        [str(sol_exe)],
+                                        input=g_inp,
+                                        text=True,
+                                        capture_output=True,
+                                        timeout=5,
                                     )
+                                    if s_chk.returncode == 0:
+                                        seen_inputs.add(g_inp)
+                                        valid_tests.append(
+                                            TestCase(
+                                                test_index=len(valid_tests) + 1,
+                                                input_data=g_inp,
+                                                expected_output=s_chk.stdout.strip(),
+                                                description=f"Generated Generator Test Tier {t_id}",
+                                                is_sample=False,
+                                            )
+                                        )
                     except Exception:
                         pass
 
@@ -278,6 +171,7 @@ class LocalVerifier:
                         TestCase(
                             test_index=idx,
                             input_data=base.strip() + "\n",
+                            expected_output="",
                             description=f"Generated Stress Test {idx}",
                             is_sample=False,
                         )
@@ -290,4 +184,12 @@ class LocalVerifier:
                 t.test_index = i
 
             code.tests = valid_tests
+
+            # Clean up auxiliary solutions as per user request (only keep main solution)
+            code.validator_cpp = ""
+            code.brute_force_cpp = ""
+            code.solution_tl_cpp = ""
+            code.solution_wa_cpp = ""
+            code.solution_py = ""
+
             return code

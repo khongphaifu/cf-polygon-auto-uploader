@@ -1,6 +1,6 @@
 import json
 import re
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from pathlib import Path
 from core.models import ProblemData, SampleTestCase, GeneratedCode, TestCase
 from core.ai_engine.llm_client import LLMClient
@@ -8,6 +8,7 @@ from core.ai_engine.prompts import (
     PARSE_PROBLEM_PROMPT,
     GENERATE_CODE_PROMPT,
     GENERATE_TESTS_PROMPT,
+    FIX_CODE_PROMPT,
     PARSE_IMAGE_PROMPT,
 )
 from core.ai_engine.local_verifier import LocalVerifier
@@ -107,7 +108,7 @@ class AIPipeline:
         return code
 
     def generate_code_and_tests(self, problem: ProblemData, num_tests: int = 20) -> GeneratedCode:
-        """Generate C++ solution, testlib validator, generator, and tests in separate optimized steps."""
+        """Generate C++ solution, generator, and 20 strict tests in separate optimized steps."""
         sample_tests_json = json.dumps(
             [
                 {
@@ -120,7 +121,7 @@ class AIPipeline:
             indent=2,
         )
 
-        # 1. Step 1: Generate Code (Solution, Validator, Generator, Script)
+        # 1. Step 1: Generate Optimal C++20 Main Solution
         code_prompt = GENERATE_CODE_PROMPT.replace("{title}", problem.title)
         code_prompt = code_prompt.replace("{constraints}", problem.constraints or "Standard CP constraints")
         code_prompt = code_prompt.replace("{legend}", problem.legend[:4000])
@@ -132,27 +133,12 @@ class AIPipeline:
         code_result = self.llm.generate_json(code_prompt)
 
         sol_cpp = self._sanitize_cpp_code(code_result.get("solution_cpp", ""), is_testlib=False)
-        brute_cpp = self._sanitize_cpp_code(code_result.get("brute_force_cpp", ""), is_testlib=False)
-        tl_cpp = self._sanitize_cpp_code(code_result.get("solution_tl_cpp", ""), is_testlib=False)
-        wa_cpp = self._sanitize_cpp_code(code_result.get("solution_wa_cpp", ""), is_testlib=False)
-        py_code = code_result.get("solution_py", "")
-        if py_code:
-            py_code = py_code.strip()
-            if py_code.startswith("```"):
-                lines = py_code.splitlines()
-                if lines[0].startswith("```"):
-                    lines = lines[1:]
-                if lines and lines[-1].strip() == "```":
-                    lines = lines[:-1]
-                py_code = "\n".join(lines).strip()
-
-        val_cpp = self._sanitize_cpp_code(code_result.get("validator_cpp", ""), is_testlib=True)
         gen_cpp = self._sanitize_cpp_code(code_result.get("generator_cpp", ""), is_testlib=True)
         chk_cpp = code_result.get("custom_checker_cpp")
         if chk_cpp:
             chk_cpp = self._sanitize_cpp_code(chk_cpp, is_testlib=True)
 
-        # 2. Step 2: Generate Tests (Standalone lightweight prompt)
+        # 2. Step 2: Generate 20 Rigorous Test Inputs
         test_prompt = GENERATE_TESTS_PROMPT.replace("{title}", problem.title)
         test_prompt = test_prompt.replace("{constraints}", problem.constraints or "Standard CP constraints")
         test_prompt = test_prompt.replace("{input_format}", problem.input_format[:2000])
@@ -200,17 +186,43 @@ class AIPipeline:
 
         gen_code = GeneratedCode(
             solution_cpp=sol_cpp,
-            brute_force_cpp=brute_cpp,
-            solution_tl_cpp=tl_cpp,
-            solution_wa_cpp=wa_cpp,
-            solution_py=py_code,
-            validator_cpp=val_cpp,
+            validator_cpp="",
             generator_cpp=gen_cpp,
             checker_type=code_result.get("checker_type", problem.checker_type or "std::wcmp.cpp"),
             custom_checker_cpp=chk_cpp,
             tests=test_cases,
-            test_script_lines=code_result.get("test_script_lines", []),
+            test_script_lines=[],
         )
 
         verifier = LocalVerifier()
         return verifier.verify_and_clean(problem=problem, code=gen_code, target_num_tests=num_tests)
+
+    def fix_solution(self, problem: ProblemData, current_code: str, error_details: str) -> str:
+        """Call AI with FIX_CODE_PROMPT to automatically repair solution_cpp."""
+        sample_tests_json = json.dumps(
+            [
+                {
+                    "input": s.input_text,
+                    "output": s.output_text,
+                    "explanation": s.explanation,
+                }
+                for s in problem.sample_tests
+            ],
+            indent=2,
+        )
+        prompt = FIX_CODE_PROMPT.replace("{title}", problem.title)
+        prompt = prompt.replace("{constraints}", problem.constraints or "Standard CP constraints")
+        prompt = prompt.replace("{input_format}", problem.input_format[:2000])
+        prompt = prompt.replace("{output_format}", problem.output_format[:2000])
+        prompt = prompt.replace("{sample_tests_json}", sample_tests_json)
+        prompt = prompt.replace("{current_code}", current_code)
+        prompt = prompt.replace("{error_details}", str(error_details)[:4000])
+
+        try:
+            res = self.llm.generate_json(prompt)
+            fixed_code = res.get("solution_cpp", "")
+            if fixed_code:
+                return self._sanitize_cpp_code(fixed_code, is_testlib=False)
+        except Exception:
+            pass
+        return current_code

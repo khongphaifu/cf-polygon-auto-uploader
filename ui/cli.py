@@ -95,11 +95,11 @@ class AutoUploaderCLI:
             console.print(f"  [dim]Gioi han: {problem_data.time_limit_ms}ms | {problem_data.memory_limit_mb}MB | Samples: {len(problem_data.sample_tests)}[/dim]")
 
             # 3. AI Code & Test Generation
-            with console.status("[bold yellow]3. AI dang viet Solution C++20, Validator, Generator va sinh 20 test...[/bold yellow]"):
+            with console.status("[bold yellow]3. AI dang viet Solution C++20 toi uu va sinh 20 bo test chat che...[/bold yellow]"):
                 gen_code: GeneratedCode = self.ai_pipeline.generate_code_and_tests(
                     problem_data, num_tests=self.config.generation.num_tests
                 )
-            console.print(f"  [green]✓[/green] Da sinh Solution C++20, Validator testlib.h, Generator va [bold green]{len(gen_code.tests)} test cases[/bold green] (khong tinh test mau).")
+            console.print(f"  [green]✓[/green] Da sinh Solution C++20 toi uu, chay sinh dap an truc tiep va [bold green]{len(gen_code.tests)} test cases[/bold green] (khong tinh test mau).")
 
             # 4. Polygon Problem Initialization
             with console.status("[bold yellow]4. Dang tao / kiem tra bai tap tren Polygon Codeforces...[/bold yellow]"):
@@ -120,9 +120,9 @@ class AutoUploaderCLI:
             console.print("  [green]✓[/green] Tai Statement LaTeX & Gioi han thanh cong.")
 
             # 6. Upload Source Codes & Checker
-            with console.status("[bold yellow]6. Dang nap Validator, Generator, Solution va Checker...[/bold yellow]"):
+            with console.status("[bold yellow]6. Dang nap Solution C++20 chinh va Checker len Polygon...[/bold yellow]"):
                 self.polygon_auto.setup_code_files(problem_id, gen_code)
-            console.print(f"  [green]✓[/green] Da nap validator.cpp, gen.cpp, solution.cpp (Checker: {gen_code.checker_type}).")
+            console.print(f"  [green]✓[/green] Da nap solution.cpp (Checker: {gen_code.checker_type}).")
 
             # 7. Upload Tests
             with console.status(f"[bold yellow]7. Dang dua {len(problem_data.sample_tests)} test mau va {len(gen_code.tests)} test tu sinh len Polygon...[/bold yellow]"):
@@ -135,16 +135,31 @@ class AutoUploaderCLI:
                     self.polygon_auto.grant_access_to_codeforces(problem_id)
                 console.print("  [green]✓[/green] Da kich hoat phan quyen cho user 'codeforces'.")
 
-            # 9. Packaging
+            # 9. Packaging with Auto-Repair
             if self.config.generation.auto_package:
-                with console.status("[bold yellow]9. Dang yeu cau Polygon build Full Package & verify...[/bold yellow]"):
-                    pkg_res = self.polygon_auto.build_and_wait_package(problem_id, timeout_sec=90, poll_interval=4)
+                with console.status("[bold yellow]9. Dang yeu cau Polygon build Full Package & verify (kem Auto-Repair)...[/bold yellow]"):
+                    pkg_res = self.polygon_auto.build_and_wait_package(
+                        problem_id,
+                        timeout_sec=120,
+                        poll_interval=4,
+                        problem=problem_data,
+                        code=gen_code,
+                        ai_pipeline=self.ai_pipeline,
+                    )
                     record.package_id = pkg_res.get("id")
                     record.package_state = pkg_res.get("state", "BUILDING")
-                console.print(f"  [green]✓[/green] Trang thai Package: [bold green]{record.package_state}[/bold green] (Package ID: {record.package_id or 'queued'})")
+                    if record.package_state == "FAILED":
+                        record.status = "FAILED"
+                        record.error_message = pkg_res.get("error_message") or f"Polygon package build failed on package {record.package_id}."
+                        console.print(f"  [bold red]❌ Trang thai Package: FAILED[/bold red] (Package ID: {record.package_id}) - {record.error_message}")
+                    else:
+                        record.status = "SUCCESS"
+                        console.print(f"  [green]✓[/green] Trang thai Package: [bold green]{record.package_state}[/bold green] (Package ID: {record.package_id or 'queued'})")
+            else:
+                record.status = "SUCCESS"
 
-            record.status = "SUCCESS"
-            console.print(f"\n[bold green]🎉 Hoan tat bai tap: {problem_data.title}[/bold green]")
+            if record.status == "SUCCESS":
+                console.print(f"\n[bold green]🎉 Hoan tat bai tap: {problem_data.title}[/bold green]")
 
         except Exception as e:
             record.status = "FAILED"

@@ -59,104 +59,25 @@ Original Webpage / Problem Content:
 --------------------
 """
 
-GENERATE_CODE_PROMPT = """You are an International Grandmaster Competitive Programmer and Polygon Problem Setter.
-You are given the problem details below. You need to write 3 pieces of flawless, high-performance C++ code:
+GENERATE_CODE_PROMPT = """You are an International Grandmaster Competitive Programmer and chief Polygon Problem Setter.
+Analyze the problem details carefully and implement the single MAIN, OPTIMAL, and 100% CORRECT C++20 solution.
 
-1. `solution_cpp`:
-   - An optimal, clean, correct C++20 solution.
-   - Strict time complexity: optimal for the given $N$ (e.g. $\\mathcal{O}(N \\log N)$ or $\\mathcal{O}(N)$ when $N \\le 2 \\cdot 10^5$, $\\mathcal{O}(\\log N)$ or $\\mathcal{O}(1)$ for math/large $N$). NEVER use a naive $\\mathcal{O}(N^2)$ if it will TLE.
-   - Prevent 32-bit integer overflow: ALWAYS use `long long` for variables, sums, products, and DP states that can exceed $2 \\cdot 10^9$.
-   - Fast I/O: `ios_base::sync_with_stdio(false); cin.tie(NULL);`.
-   - Include `#include <bits/stdc++.h>` and `using namespace std;`.
-
-2. `validator_cpp` (Testlib Strict Standard - ZERO Warnings, ZERO Exit 3):
-   - Strict Codeforces `testlib.h` validator.
-   - Format:
+REQUIREMENTS FOR MAIN SOLUTION (`solution_cpp`):
+1. Algorithmic Perfection:
+   - Must use the optimal algorithm (e.g. DP, Greedy with proof, Segment Tree/Fenwick, Binary Search, Graph BFS/Dijkstra/DSU, Math/Number Theory, Two Pointers).
+   - Time Complexity: Strictly $\\mathcal{O}(N)$, $\\mathcal{O}(N \\log N)$, or $\\mathcal{O}(\\log N) / \\mathcal{O}(1)$ for math. NEVER use naive $\\mathcal{O}(N^2)$ if $N > 2000$.
+   - Space Complexity: Strictly within the memory limit.
+2. Robustness & Overflow Safety:
+   - Prevent 32-bit integer overflow: ALWAYS use `long long` (or `int64_t`) for variables, sums, products, prefix sums, and DP states whenever values can exceed $2 \\cdot 10^9$.
+   - Fast I/O: ALWAYS include:
      ```cpp
-     #include "testlib.h"
-     #include <bits/stdc++.h>
-     using namespace std;
-
-     int main(int argc, char* argv[]) {
-         registerValidation(argc, argv);
-         // If multi-testcase t:
-         int t = inf.readInt(1, 10000, "t");
-         inf.readEoln();
-         long long sum_n = 0;
-         for (int tc = 1; tc <= t; ++tc) {
-             setTestCase(tc);
-             int n = inf.readInt(1, 200000, "n");
-             inf.readSpace();
-             long long k = inf.readLong(1LL, 1000000000000000000LL, "k");
-             inf.readEoln();
-             sum_n += n;
-             // Read array / string...
-             // For array:
-             // for (int i = 0; i < n; ++i) {
-             //     if (i > 0) inf.readSpace();
-             //     inf.readInt(1, 1000000000, "a_i");
-             // }
-             // inf.readEoln();
-         }
-         ensuref(sum_n <= 200000, "Sum of n (%lld) exceeds limit", sum_n);
-         inf.readEof();
-         return 0;
-     }
+     ios_base::sync_with_stdio(false);
+     cin.tie(NULL);
      ```
-   - Must match the exact input structure, spaces `inf.readSpace()`, end of lines `inf.readEoln()`, and end of file `inf.readEof()`.
-
-3. `generator_cpp` (Structured 20-Test Tier Generator):
-   - Must use modern `testlib.h`, `mt19937_64 rng`, and `rd(l, r)` supporting `int test = atoi(argv[1]);`:
-     ```cpp
-     #include "testlib.h"
-     #include <bits/stdc++.h>
-     using namespace std;
-
-     mt19937_64 rng(13022007);
-
-     long long rd(long long l, long long r) {
-         return uniform_int_distribution<long long>(l, r)(rng);
-     }
-
-     int main(int argc, char* argv[]) {
-         registerGen(argc, argv, 1);
-         int test = atoi(argv[1]);
-         rng.seed(test);
-
-         // Generate specific crafted test case depending on test index (1 to 20):
-         // Test 1: Minimal example / sample-like
-         // Test 2: Absolute minimum values
-         // Test 3-6: Immediate off-by-one / boundary edge cases (primes, squares, parity, identical/alternating elements)
-         // Test 7-13: Transition values & powers of 10 boundaries (10^5, 10^6, 10^9, 10^12, 10^18, 2^30, 2^60)
-         // Test 14-16: Tricky / "hiểm" corner cases (anti-greedy, anti-hash, max overflow traps)
-         // Test 17: Small random test
-         // Test 18: Medium random test
-         // Test 19-20: Maximum constraint stress tests (N = N_max, sum N = max, max values)
-
-         return 0;
-     }
-     ```
-
-4. `brute_force_cpp` (Stress-Testing Reference Solution):
-   - A straightforward, simple, 100% correct brute-force C++ solution (e.g. $\\mathcal{O}(2^N)$ or $\\mathcal{O}(N^2)$).
-   - Used for automated cross-checking and stress-testing against `solution_cpp` on smaller inputs to guarantee 100% correctness without Wrong Answer.
-
-5. `solution_tl_cpp` (Time Limit Exceeded Test Solution):
-   - An intentionally slow, naive $\\mathcal{O}(N^2)$ or unoptimized algorithm.
-   - Used on Polygon with tag `TL` to mathematically prove that our test suite strictly kills slow solutions.
-
-6. `solution_wa_cpp` (Wrong Answer Test Solution):
-   - An intentionally flawed solution (e.g. naive greedy, ignoring a subtle corner case, or using 32-bit `int` that overflows).
-   - Used on Polygon with tag `WA` to mathematically prove that our test suite strictly catches incorrect solutions.
-
-7. `solution_py` (Python 3 Reference Solution):
-   - A clean, standard Python 3 solution.
-
-8. `test_script_lines`:
-   - `["gen 1 > $", "gen 2 > $", "gen 3 > $", ..., "gen 20 > $"]`
-
-9. `custom_checker_cpp`:
-   - If `checker_type` is "custom", provide C++ testlib checker using `registerTestlibCmd(argc, argv);`. Otherwise `null`.
+   - Standard headers: Use `#include <bits/stdc++.h>` and `using namespace std;`.
+   - Correct handling of multi-testcase $t$: Read $t$ first if input format specifies multi-testcase ($t$), and reset global data/vectors between test cases.
+3. Generator C++ (`generator_cpp`):
+   - Provide an optional testlib generator C++ supporting `int test = atoi(argv[1]);` with `mt19937_64 rng(13022007);` and `registerGen(argc, argv, 1);`.
 
 Problem Details:
 ----------------
@@ -175,25 +96,16 @@ Checker Type: {checker_type}
 
 Return ONLY a valid JSON object with the following schema:
 {
-  "solution_cpp": "/* Optimal C++20 code */",
-  "brute_force_cpp": "/* Simple 100% correct brute force C++ code */",
-  "solution_tl_cpp": "/* Naive slow O(N^2) C++ code */",
-  "solution_wa_cpp": "/* Flawed greedy/overflow C++ code */",
-  "solution_py": "# Python 3 solution",
-  "validator_cpp": "/* testlib validator C++ code */",
-  "generator_cpp": "/* testlib generator C++ code */",
+  "solution_cpp": "/* 100% Optimal, Flawless C++20 Main Solution */",
+  "generator_cpp": "/* testlib generator C++ code using testlib.h */",
   "checker_type": "{checker_type}",
-  "custom_checker_cpp": null,
-  "test_script_lines": [
-    "gen 1 > $",
-    "gen 2 > $",
-    "gen 20 > $"
-  ]
+  "custom_checker_cpp": null
 }
 """
 
 GENERATE_TESTS_PROMPT = """You are an International Grandmaster Competitive Programmer and Polygon Problem Setter.
-Generate EXACTLY 20 concrete, highly crafted, and mathematically rigorous test inputs for this problem (DO NOT include sample tests).
+Generate EXACTLY 20 concrete, mathematically strict, and edge-case exhaustive test inputs for this problem (DO NOT include sample tests).
+Every single test must be 100% compliant with the `Input Format` and `Constraints`.
 
 Problem Details:
 ----------------
@@ -204,20 +116,20 @@ Sample Tests:
 {sample_tests_json}
 ----------------
 
-RIGOROUS 20-TEST HIERARCHICAL STRUCTURE (From Easy to Hard & Tricky "Hiểm"):
-- Test 1: Minimal example / small corner case ($N = N_{\\min}$, minimal values).
-- Test 2: Absolute boundary minimums (all variables at absolute lower limits, e.g. $1$, $0$, or $-10^9$).
+RIGOROUS 20-TEST HIERARCHICAL STRUCTURE (Comprehensive & Exhaustive):
+- Test 1: Minimal example / small edge case ($N = N_{\\min}$, minimal values).
+- Test 2: Absolute boundary minimums (all variables at absolute lower limits, e.g. $0, 1, -10^9$).
 - Test 3: Off-by-one boundary test ($N_{\\min} + 1$, transition points).
 - Test 4: Special mathematical properties: Perfect squares / non-squares ($k^2, k^2-1, k^2+1$).
-- Test 5: Prime numbers / composites / powers of two ($2^k-1, 2^k$).
+- Test 5: Prime numbers / composites / powers of two ($2^k-1, 2^k$, large primes).
 - Test 6: Parity & symmetry edge cases (all odd, all even, alternating parity, symmetric palindrome patterns).
 - Test 7: Identical elements / zero variance (all array elements equal, or all identical characters like `aaaa...a`).
 - Test 8: Monotonic patterns: strictly increasing sorted array / strictly decreasing reverse-sorted array.
 - Test 9: Scale transition boundary ($N = 100$, values $\\approx 10^3$).
 - Test 10: Scale transition boundary ($N = 1000$, values $\\approx 10^6$).
-- Test 11: Power of 10 boundary ($10^6 - 1, 10^6, 10^6 + 1$).
+- Test 11: Power of 10 boundary ($10^5, 10^6 - 1, 10^6, 10^6 + 1$).
 - Test 12: 32-bit boundary & integer overflow traps ($2^{31}-1 = 2147483647$, $10^9$).
-- Test 13: 64-bit maximum boundary ($10^{18} - 1, 10^{18}$, $2^{60}$).
+- Test 13: 64-bit maximum boundary ($10^{18} - 1, 10^{18}$, $2^{60}$, large coordinate values).
 - Test 14: Tricky / "Hiểm" case 1: Anti-greedy / counter-example specifically crafted to kill naive heuristics.
 - Test 15: Tricky / "Hiểm" case 2: Anti-hash / collision or high-frequency repetition to kill naive unordered_map / hash sets.
 - Test 16: Tricky / "Hiểm" case 3: Extreme degenerate structure (e.g. star graph, linear chain graph, all elements coprime, single mismatch at the very last position).
@@ -241,6 +153,34 @@ Return ONLY a valid JSON object with the following schema:
       "description": "Minimal example test"
     }
   ]
+}
+"""
+
+FIX_CODE_PROMPT = """You are an International Grandmaster Competitive Programmer and Polygon Problem Setter.
+The previous solution or test case failed local verification or Polygon package build with the error described below.
+Analyze the bug carefully and fix the C++20 solution (`solution_cpp`).
+
+Problem Title: {title}
+Constraints: {constraints}
+Input Format: {input_format}
+Output Format: {output_format}
+Sample Tests: {sample_tests_json}
+
+Current Code:
+```cpp
+{current_code}
+```
+
+Error Details / Compiler Output / Test Failure:
+--------------------
+{error_details}
+--------------------
+
+Fix the bug completely. Ensure optimal time complexity, correct logic, 64-bit integer overflow protection (`long long`), and fast I/O.
+Return ONLY a valid JSON object with:
+{
+  "solution_cpp": "/* Fixed, Flawless C++20 Code */",
+  "explanation": "Brief explanation of what was fixed"
 }
 """
 
@@ -276,4 +216,3 @@ Return ONLY a valid JSON object with the following schema:
   ]
 }
 """
-

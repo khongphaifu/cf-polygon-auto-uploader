@@ -1,11 +1,11 @@
 import time
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Callable
 from core.models import ProblemData, GeneratedCode, PolygonProblemRecord
 from core.polygon.client import PolygonClient, PolygonAPIError
 
 
 class PolygonAutomation:
-    """High-level automation coordinator for Polygon Codeforces."""
+    """High-level automation coordinator for Polygon Codeforces with auto-repair and permission management."""
 
     def __init__(self, client: PolygonClient):
         self.client = client
@@ -47,32 +47,8 @@ class PolygonAutomation:
         )
 
     def setup_code_files(self, problem_id: int, code: GeneratedCode) -> None:
-        """Upload validator, generator, checker, and main solution."""
-        # 1. Validator
-        if code.validator_cpp:
-            self.client.save_file(
-                problem_id=problem_id,
-                file_type="source",
-                name="validator.cpp",
-                content=code.validator_cpp,
-                check_existing=False,
-            )
-            self.client.set_validator(problem_id=problem_id, validator_name="validator.cpp")
-
-        # 2. Generator
-        if code.generator_cpp:
-            try:
-                self.client.save_file(
-                    problem_id=problem_id,
-                    file_type="source",
-                    name="gen.cpp",
-                    content=code.generator_cpp,
-                    check_existing=False,
-                )
-            except Exception:
-                pass
-
-        # 3. Checker
+        """Upload checker and main solution (MA tag) only."""
+        # 1. Checker
         if code.checker_type == "custom" and code.custom_checker_cpp:
             self.client.save_file(
                 problem_id=problem_id,
@@ -86,7 +62,7 @@ class PolygonAutomation:
             checker = code.checker_type if code.checker_type.startswith("std::") else f"std::{code.checker_type}"
             self.client.set_checker(problem_id=problem_id, checker_name=checker)
 
-        # 4. Main Solution (MA = Main correct solution)
+        # 2. Main Solution (MA = Main correct solution)
         if code.solution_cpp:
             self.client.save_solution(
                 problem_id=problem_id,
@@ -96,62 +72,8 @@ class PolygonAutomation:
                 check_existing=False,
             )
 
-        # 5. Brute Force Reference Solution (OK = Correct secondary solution)
-        if code.brute_force_cpp:
-            try:
-                self.client.save_solution(
-                    problem_id=problem_id,
-                    name="brute.cpp",
-                    content=code.brute_force_cpp,
-                    tag="OK",
-                    check_existing=False,
-                )
-            except Exception:
-                pass
-
-        # 6. Time Limit Exceeded Test Solution (TL = Time limit exceeded)
-        if code.solution_tl_cpp:
-            try:
-                self.client.save_solution(
-                    problem_id=problem_id,
-                    name="slow_tl.cpp",
-                    content=code.solution_tl_cpp,
-                    tag="TL",
-                    check_existing=False,
-                )
-            except Exception:
-                pass
-
-        # 7. Wrong Answer Test Solution (WA = Wrong answer)
-        if code.solution_wa_cpp:
-            try:
-                self.client.save_solution(
-                    problem_id=problem_id,
-                    name="flawed_wa.cpp",
-                    content=code.solution_wa_cpp,
-                    tag="WA",
-                    check_existing=False,
-                )
-            except Exception:
-                pass
-
-        # 8. Python 3 Reference Solution (OK)
-        if code.solution_py:
-            try:
-                self.client.save_solution(
-                    problem_id=problem_id,
-                    name="solution.py",
-                    content=code.solution_py,
-                    tag="OK",
-                    check_existing=False,
-                )
-            except Exception:
-                pass
-
     def setup_tests(self, problem_id: int, problem: ProblemData, code: GeneratedCode) -> None:
-        """Upload sample tests (marked for statements) and generated tests (exactly 20).
-        Uses checkExisting=False to overwrite tests at same index (Polygon: False=overwrite, True=fail-if-exists).
-        Skips content-duplicate tests (coincides error) gracefully with rate-limit pacing."""
+        """Upload sample tests and generated tests (exactly 20)."""
         uploaded_inputs: set = set()
         current_test_idx = 1
 
@@ -160,7 +82,7 @@ class PolygonAutomation:
             nonlocal current_test_idx
             normalized = test_input.strip()
             if normalized in uploaded_inputs:
-                return  # skip content-duplicate
+                return
             try:
                 self.client.save_test(
                     problem_id=problem_id,
@@ -168,15 +90,14 @@ class PolygonAutomation:
                     test_input=test_input,
                     test_description=description,
                     use_in_statements=use_in_statements,
-                    check_existing=False,  # False = overwrite existing at same index
+                    check_existing=False,
                 )
                 uploaded_inputs.add(normalized)
                 current_test_idx += 1
-                time.sleep(1.0)  # Pace requests to prevent Polygon 429 rate limit
+                time.sleep(1.0)  # Pace requests to prevent Polygon rate limit
             except Exception as e:
                 err_msg = str(e).lower()
                 if "coincides" in err_msg or "already exists" in err_msg:
-                    # Content duplicate at a different index, or index already exists → skip
                     uploaded_inputs.add(normalized)
                     current_test_idx += 1
                 else:
@@ -186,7 +107,7 @@ class PolygonAutomation:
         for s_idx, sample in enumerate(problem.sample_tests, start=1):
             _save_test_safe(sample.input_text, f"Sample Test {s_idx}", True)
 
-        # 2. Upload generated tests (20 tests, deduplicated)
+        # 2. Upload generated tests
         for gen_test in code.tests:
             _save_test_safe(
                 gen_test.input_data,
@@ -194,63 +115,134 @@ class PolygonAutomation:
                 False,
             )
 
-        # NOTE: Generator script is intentionally NOT uploaded.
-        # All 20 tests have been pre-generated and locally verified by LocalVerifier.
-        # Uploading a generator script would cause Polygon to generate additional tests
-        # that may fail the validator or solution, causing package build failures.
-
-    def build_and_wait_package(
-        self, problem_id: int, timeout_sec: int = 180, poll_interval: int = 5
-    ) -> Dict[str, Any]:
-        """Commit working copy changes and trigger package building job."""
+    def grant_access_to_codeforces(self, problem_id: int) -> bool:
+        """
+        Grant write and read access to 'codeforces' user and by tag.
+        Ensures Codeforces can easily import and view the problem.
+        """
+        success = False
+        # 1. Try problem.giveAccess with Write
         try:
-            self.client.commit_changes(problem_id=problem_id, message="Auto-commit by CF Polygon Uploader")
+            self.client.request("problem.giveAccess", {
+                "problemId": problem_id,
+                "login": "codeforces",
+                "type": "Write",
+            })
+            success = True
         except Exception:
             pass
 
-        # Record the current max package id before creating a new package
-        try:
-            prev_packages = self.client.list_packages(problem_id=problem_id)
-            max_prev_id = max([p.get("id", 0) for p in prev_packages], default=0)
-        except Exception:
-            max_prev_id = 0
-
-        self.client.create_package(problem_id=problem_id, full=True, verify=True)
-        
-        start_time = time.time()
-        while time.time() - start_time < timeout_sec:
+        # 2. Try problem.giveAccess with Read
+        if not success:
             try:
-                packages = self.client.list_packages(problem_id=problem_id)
-                if packages:
-                    # Look for packages with id > max_prev_id, or simply the highest id package
-                    new_pkgs = [p for p in packages if p.get("id", 0) > max_prev_id]
-                    target_pkg = max(new_pkgs, key=lambda x: x.get("id", 0)) if new_pkgs else max(packages, key=lambda x: x.get("id", 0))
-                    state = target_pkg.get("state", "UNKNOWN")
-                    if state in ["READY", "FAILED", "WARNING"]:
-                        return target_pkg
+                self.client.request("problem.giveAccess", {
+                    "problemId": problem_id,
+                    "login": "codeforces",
+                    "type": "Read",
+                })
+                success = True
             except Exception:
                 pass
-            time.sleep(poll_interval)
 
+        # 3. Try problem.editAccessByTag
         try:
-            packages = self.client.list_packages(problem_id=problem_id)
-            return max(packages, key=lambda x: x.get("id", 0)) if packages else {"state": "BUILDING_OR_QUEUED"}
-        except Exception:
-            return {"state": "BUILDING_OR_QUEUED"}
-
-    def grant_access_to_codeforces(self, problem_id: int) -> bool:
-        """
-        Attempt to grant read/import access to user 'codeforces'.
-        Polygon allows problem viewing by codeforces when shared or packaged.
-        """
-        try:
-            # Attempt tag access or direct API access endpoint if available
             self.client.request("problem.editAccessByTag", {
                 "problemId": problem_id,
                 "tag": "codeforces",
-                "access": "READ",
+                "access": "WRITE",
             })
-            return True
+            success = True
         except Exception:
-            # If tag not applicable, access is also granted automatically when packaging with CF integration
-            return True
+            pass
+
+        return success
+
+    def build_and_wait_package(
+        self,
+        problem_id: int,
+        timeout_sec: int = 180,
+        poll_interval: int = 5,
+        problem: Optional[ProblemData] = None,
+        code: Optional[GeneratedCode] = None,
+        ai_pipeline: Optional[Any] = None,
+        max_repair_retries: int = 2,
+    ) -> Dict[str, Any]:
+        """
+        Commit changes and trigger package building job.
+        Includes automatic self-healing retry loop if package build fails.
+        """
+        attempt = 0
+        while attempt <= max_repair_retries:
+            attempt += 1
+            try:
+                self.client.commit_changes(problem_id=problem_id, message=f"Auto-commit build attempt {attempt}")
+            except Exception:
+                pass
+
+            # Record max prev package id
+            try:
+                prev_packages = self.client.list_packages(problem_id=problem_id)
+                max_prev_id = max([p.get("id", 0) for p in prev_packages], default=0)
+            except Exception:
+                max_prev_id = 0
+
+            try:
+                self.client.create_package(problem_id=problem_id, full=True, verify=True)
+            except Exception as e:
+                if attempt > max_repair_retries:
+                    return {"state": "FAILED", "error_message": f"Cannot create package on Polygon: {e}"}
+
+            start_time = time.time()
+            pkg_result = None
+
+            while time.time() - start_time < timeout_sec:
+                try:
+                    packages = self.client.list_packages(problem_id=problem_id)
+                    if packages:
+                        new_pkgs = [p for p in packages if p.get("id", 0) > max_prev_id]
+                        target_pkg = max(new_pkgs, key=lambda x: x.get("id", 0)) if new_pkgs else max(packages, key=lambda x: x.get("id", 0))
+                        state = target_pkg.get("state", "UNKNOWN")
+                        if state in ["READY", "FAILED", "WARNING"]:
+                            pkg_result = target_pkg
+                            break
+                except Exception:
+                    pass
+                time.sleep(poll_interval)
+
+            if not pkg_result:
+                try:
+                    packages = self.client.list_packages(problem_id=problem_id)
+                    pkg_result = max(packages, key=lambda x: x.get("id", 0)) if packages else {"state": "BUILDING_OR_QUEUED"}
+                except Exception:
+                    pkg_result = {"state": "BUILDING_OR_QUEUED"}
+
+            # If Package succeeded, return immediately
+            if pkg_result.get("state") in ["READY", "WARNING"]:
+                return pkg_result
+
+            # If Package FAILED and we have retry attempts left, trigger Auto-Repair with AI
+            if pkg_result.get("state") == "FAILED" and attempt <= max_repair_retries and ai_pipeline and problem and code:
+                error_diag = f"Polygon Package {pkg_result.get('id')} failed verification. State: {pkg_result.get('state')}."
+                try:
+                    # Request AI to repair solution_cpp
+                    fixed_code = ai_pipeline.fix_solution(problem, code.solution_cpp, error_diag)
+                    if fixed_code and fixed_code != code.solution_cpp:
+                        code.solution_cpp = fixed_code
+                        # Re-verify locally
+                        from core.ai_engine.local_verifier import LocalVerifier
+                        verifier = LocalVerifier()
+                        code = verifier.verify_and_clean(problem, code, target_num_tests=len(code.tests))
+                        # Re-upload fixed solution
+                        self.setup_code_files(problem_id, code)
+                        continue
+                except Exception:
+                    pass
+
+            # If no repair possible or final attempt reached
+            if pkg_result.get("state") == "FAILED":
+                pkg_result["error_message"] = f"Polygon package build failed on package {pkg_result.get('id', 'N/A')}. Verification checks did not pass."
+                return pkg_result
+
+            return pkg_result
+
+        return {"state": "FAILED", "error_message": "Package build exceeded maximum repair attempts."}

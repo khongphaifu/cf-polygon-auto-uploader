@@ -9,17 +9,20 @@ class LLMClient:
     """Client for interacting with Google Gemini API with seamless multi-model fallback."""
 
     FALLBACK_MODELS = [
+        "gemini-3.1-pro-preview",
+        "gemini-3.7-flash",
+        "gemini-3.5-flash",
         "gemini-3.5-flash-lite",
-        "gemini-flash-lite-latest",
-        "gemini-3.1-flash-lite",
-        "gemini-3-flash-preview",
+        "gemini-flash-latest",
+        "gemini-2.5-pro",
+        "gemini-2.5-flash",
     ]
 
     def __init__(
         self,
         api_key: Any,
         backup_keys: Optional[List[str]] = None,
-        model_name: str = "gemini-3.5-flash-lite",
+        model_name: str = "gemini-3.1-pro-preview",
         temperature: float = 0.2,
     ):
         self.api_keys_pool: List[str] = []
@@ -38,9 +41,13 @@ class LLMClient:
 
         self.api_key = self.api_keys_pool[0]
         # Default model alias normalization
-        if model_name in ["gemini", "gemini-flash", "flash", "gemini-3.5-flash"]:
-            self.model_name = "gemini-3.5-flash-lite"
-        elif model_name in ["lite", "flash-lite"]:
+        if model_name in ["3.1-pro", "gemini-3.1-pro", "3.1_pro", "gemini-3.1-pro-preview"]:
+            self.model_name = "gemini-3.1-pro-preview"
+        elif model_name in ["3.7-flash", "gemini-3.7-flash"]:
+            self.model_name = "gemini-3.7-flash"
+        elif model_name in ["gemini", "gemini-flash", "flash", "gemini-3.5-flash"]:
+            self.model_name = "gemini-3.5-flash"
+        elif model_name in ["lite", "flash-lite", "gemini-3.5-flash-lite"]:
             self.model_name = "gemini-3.5-flash-lite"
         else:
             self.model_name = model_name

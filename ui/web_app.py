@@ -333,9 +333,9 @@ def process_url_worker(url: str):
         add_dashboard_log(f"Đã phân tích: {problem_data.title} ({problem_data.short_name})", step="2/9 Hoàn tất AI", progress=40)
 
         # Step 3: AI Code & Tests
-        add_dashboard_log("AI đang viết Solution C++20, Brute-force, TL/WA/Python, Validator và 20 test...", step="3/9 Sinh Code & Test", progress=50)
+        add_dashboard_log("AI đang viết Solution C++20 tối ưu và sinh 20 bộ test chặt chẽ...", step="3/9 Sinh Code & Test", progress=50)
         gen_code: GeneratedCode = ai_pipeline.generate_code_and_tests(problem_data, num_tests=config.generation.num_tests)
-        add_dashboard_log(f"Đã kiểm định cục bộ thành công: {len(gen_code.tests)} tests.", step="3/9 Hoàn tất Code", progress=60)
+        add_dashboard_log(f"Đã kiểm định và sinh đáp án trực tiếp cho {len(gen_code.tests)} tests.", step="3/9 Hoàn tất Code", progress=60)
 
         # Step 4: Polygon Problem Init
         add_dashboard_log("Đang tạo / liên kết bài tập trên Polygon Codeforces...", step="4/9 Khởi tạo Polygon", progress=65)
@@ -354,7 +354,7 @@ def process_url_worker(url: str):
         polygon_auto.setup_problem_statement(problem_id, problem_data)
 
         # Step 6: Code Files
-        add_dashboard_log("Đang nạp Multi-Solutions (MA, OK, TL, WA, Python) và Validator...", step="6/9 Nạp mã nguồn", progress=80)
+        add_dashboard_log("Đang nạp Solution C++20 chính và Checker lên Polygon...", step="6/9 Nạp mã nguồn", progress=80)
         polygon_auto.setup_code_files(problem_id, gen_code)
 
         # Step 7: Tests
@@ -366,15 +366,29 @@ def process_url_worker(url: str):
             add_dashboard_log("Đang cấp quyền chia sẻ cho user 'codeforces'...", step="8/9 Phân quyền", progress=90)
             polygon_auto.grant_access_to_codeforces(problem_id)
 
-        # Step 9: Package
+        # Step 9: Package with Auto-Repair
         if config.generation.auto_package:
-            add_dashboard_log("Đang yêu cầu Polygon build Full Package & verify...", step="9/9 Build Package", progress=95)
-            pkg_res = polygon_auto.build_and_wait_package(problem_id, timeout_sec=90, poll_interval=4)
+            add_dashboard_log("Đang yêu cầu Polygon build Full Package & verify (kèm Auto-Repair)...", step="9/9 Build Package", progress=95)
+            pkg_res = polygon_auto.build_and_wait_package(
+                problem_id,
+                timeout_sec=120,
+                poll_interval=4,
+                problem=problem_data,
+                code=gen_code,
+                ai_pipeline=ai_pipeline,
+            )
             record.package_id = pkg_res.get("id")
             record.package_state = pkg_res.get("state", "BUILDING")
-
-        record.status = "SUCCESS"
-        add_dashboard_log(f"🎉 Hoàn tất thành công bài tập: {problem_data.title} (Package: {record.package_state})", step="Hoàn thành", progress=100)
+            if record.package_state == "FAILED":
+                record.status = "FAILED"
+                record.error_message = pkg_res.get("error_message") or f"Polygon package build failed on package {record.package_id}."
+                add_dashboard_log(f"❌ Package FAILED: {record.error_message}", step="Thất bại", progress=100)
+            else:
+                record.status = "SUCCESS"
+                add_dashboard_log(f"🎉 Hoàn tất thành công bài tập: {problem_data.title} (Package: {record.package_state})", step="Hoàn thành", progress=100)
+        else:
+            record.status = "SUCCESS"
+            add_dashboard_log(f"🎉 Hoàn tất lưu bài tập: {problem_data.title}", step="Hoàn thành", progress=100)
 
     except Exception as e:
         record.status = "FAILED"
