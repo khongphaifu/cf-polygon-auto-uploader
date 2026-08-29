@@ -47,8 +47,8 @@ class PolygonAutomation:
         )
 
     def setup_code_files(self, problem_id: int, code: GeneratedCode) -> None:
-        """Upload checker and main solution (MA tag) only."""
-        # 1. Checker
+        """Upload checker (default std::lcmp.cpp), main solution (MA tag) and generator (if present)."""
+        # 1. Checker (Always use std::lcmp.cpp for line-by-line comparison unless custom checker is provided)
         if code.checker_type == "custom" and code.custom_checker_cpp:
             self.client.save_file(
                 problem_id=problem_id,
@@ -59,7 +59,15 @@ class PolygonAutomation:
             )
             self.client.set_checker(problem_id=problem_id, checker_name="check.cpp")
         else:
-            checker = code.checker_type if code.checker_type.startswith("std::") else f"std::{code.checker_type}"
+            checker = code.checker_type or "std::lcmp.cpp"
+            # Normalize checker - replace yesno with lcmp.cpp to avoid multi-test presentation errors
+            if "yesno" in checker.lower():
+                checker = "std::lcmp.cpp"
+            elif not checker.startswith("std::"):
+                if not checker.endswith(".cpp"):
+                    checker = f"std::{checker}.cpp"
+                else:
+                    checker = f"std::{checker}"
             self.client.set_checker(problem_id=problem_id, checker_name=checker)
 
         # 2. Main Solution (MA = Main correct solution)
@@ -72,8 +80,19 @@ class PolygonAutomation:
                 check_existing=False,
             )
 
+        # 3. Generator (upload gen.cpp as source file so Polygon can compile it)
+        if code.generator_cpp and code.generator_cpp.strip():
+            self.client.save_file(
+                problem_id=problem_id,
+                file_type="source",
+                name="gen.cpp",
+                content=code.generator_cpp,
+                source_type="cpp.g++17",
+                check_existing=False,
+            )
+
     def setup_tests(self, problem_id: int, problem: ProblemData, code: GeneratedCode) -> None:
-        """Upload sample tests and generated tests (exactly 20)."""
+        """Upload sample tests, then either use Polygon generator script (if gen.cpp present) or upload static tests."""
         uploaded_inputs: set = set()
         current_test_idx = 1
 
@@ -103,59 +122,49 @@ class PolygonAutomation:
                 else:
                     raise
 
-        # 1. Upload sample tests
+        # 1. Upload sample tests (always with use_in_statements=True)
         for s_idx, sample in enumerate(problem.sample_tests, start=1):
             _save_test_safe(sample.input_text, f"Sample Test {s_idx}", True)
 
-        # 2. Upload generated tests
-        for gen_test in code.tests:
-            _save_test_safe(
-                gen_test.input_data,
-                gen_test.description or f"Test {gen_test.test_index}",
-                False,
-            )
+        # 2a. If generator exists: use Polygon FreeMarker script to generate large tests
+        if code.generator_cpp and code.generator_cpp.strip():
+            num_gen_tests = max(1, 20 - len(problem.sample_tests))
+            script_lines = [f"<#list 1..{num_gen_tests} as i>", "    gen ${i} > $", "</#list>"]
+            # Use custom script lines if provided by pipeline
+            if hasattr(code, "test_script_lines") and code.test_script_lines:
+                script_lines = code.test_script_lines
+            script_content = "\n".join(script_lines)
+            try:
+                self.client.save_script(
+                    problem_id=problem_id,
+                    script_content=script_content,
+                )
+            except Exception as e:
+                # Fallback to static upload if script fails
+                for gen_test in code.tests:
+                    _save_test_safe(
+                        gen_test.input_data,
+                        gen_test.description or f"Test {gen_test.test_index}",
+                        False,
+                    )
+        else:
+            # 2b. No generator: upload static tests as usual
+            for gen_test in code.tests:
+                _save_test_safe(
+                    gen_test.input_data,
+                    gen_test.description or f"Test {gen_test.test_index}",
+                    False,
+                )
 
     def grant_access_to_codeforces(self, problem_id: int) -> bool:
         """
-        Grant write and read access to 'codeforces' user and by tag.
-        Ensures Codeforces can easily import and view the problem.
+        Save 'codeforces' tag on Polygon for seamless Codeforces Mashup / Contest import.
         """
-        success = False
-        # 1. Try problem.giveAccess with Write
         try:
-            self.client.request("problem.giveAccess", {
-                "problemId": problem_id,
-                "login": "codeforces",
-                "type": "Write",
-            })
-            success = True
+            self.client.save_tags(problem_id, "codeforces")
+            return True
         except Exception:
-            pass
-
-        # 2. Try problem.giveAccess with Read
-        if not success:
-            try:
-                self.client.request("problem.giveAccess", {
-                    "problemId": problem_id,
-                    "login": "codeforces",
-                    "type": "Read",
-                })
-                success = True
-            except Exception:
-                pass
-
-        # 3. Try problem.editAccessByTag
-        try:
-            self.client.request("problem.editAccessByTag", {
-                "problemId": problem_id,
-                "tag": "codeforces",
-                "access": "WRITE",
-            })
-            success = True
-        except Exception:
-            pass
-
-        return success
+            return False
 
     def build_and_wait_package(
         self,
@@ -240,7 +249,8 @@ class PolygonAutomation:
 
             # If no repair possible or final attempt reached
             if pkg_result.get("state") == "FAILED":
-                pkg_result["error_message"] = f"Polygon package build failed on package {pkg_result.get('id', 'N/A')}. Verification checks did not pass."
+                comment = pkg_result.get("comment", "").strip()
+                pkg_result["error_message"] = f"Polygon package {pkg_result.get('id', 'N/A')} failed: {comment}" if comment else f"Polygon package build failed on package {pkg_result.get('id', 'N/A')}."
                 return pkg_result
 
             return pkg_result

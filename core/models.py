@@ -25,7 +25,7 @@ class ProblemData:
     tutorial: str = ""  # Detailed editorial/tutorial in LaTeX
     time_limit_ms: int = 1000
     memory_limit_mb: int = 256
-    checker_type: str = "std::wcmp.cpp"
+    checker_type: str = "std::lcmp.cpp"
     sample_tests: List[SampleTestCase] = field(default_factory=list)
     raw_html: Optional[str] = None
 
@@ -56,7 +56,7 @@ class GeneratedCode:
     solution_tl_cpp: str = ""
     solution_wa_cpp: str = ""
     solution_py: str = ""
-    checker_type: str = "std::wcmp.cpp"  # std::wcmp.cpp, std::ncmp.cpp, std::rcmp6.cpp, std::yesno.cpp, or custom
+    checker_type: str = "std::lcmp.cpp"  # std::wcmp.cpp, std::ncmp.cpp, std::rcmp6.cpp, std::yesno.cpp, or custom
     custom_checker_cpp: Optional[str] = None
     tests: List[TestCase] = field(default_factory=list)
     test_script_lines: List[str] = field(default_factory=list)

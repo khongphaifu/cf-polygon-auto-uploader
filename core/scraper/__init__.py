@@ -5,6 +5,7 @@ from core.scraper.atcoder import AtCoderScraper
 from core.scraper.codeforces import CodeforcesScraper
 from core.scraper.cses import CSESScraper
 from core.scraper.vnoj import VNOJScraper
+from core.scraper.marisaoj import MarisaOJScraper
 from core.scraper.generic import GenericScraper
 
 ALL_SCRAPERS: List[BaseScraper] = [
@@ -13,6 +14,7 @@ ALL_SCRAPERS: List[BaseScraper] = [
     CodeforcesScraper(),
     CSESScraper(),
     VNOJScraper(),
+    MarisaOJScraper(),
     GenericScraper(),  # Must be last
 ]
 

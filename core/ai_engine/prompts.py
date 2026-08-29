@@ -29,7 +29,7 @@ CRITICAL FORMATTING GUIDELINES FOR STATEMENT:
    - `notes`: A beautifully formatted step-by-step explanation using `\\begin{itemize} \\item ... \\end{itemize}` with clear math formulas.
    - `tutorial`: A complete, comprehensive, and beautiful Editorial / Tutorial written in Polygon LaTeX explaining the key observations, algorithmic solution, mathematical proof, and time/space complexity analysis (e.g. $\\mathcal{O}(n \\log n)$).
 4. Checker Selection:
-   - Choose the exact matching checker: "std::wcmp.cpp" (tokens), "std::ncmp.cpp" (integers), "std::rcmp6.cpp" (float 10^-6), "std::rcmp9.cpp" (float 10^-9), "std::yesno.cpp" (YES/NO), "std::lcmp.cpp" (lines), or "custom".
+   - Default to "std::lcmp.cpp" (Standard line-by-line comparison).
 
 Return ONLY a valid JSON object with the following fields:
 {
@@ -43,7 +43,7 @@ Return ONLY a valid JSON object with the following fields:
   "constraints": "Summary of all variable constraints...",
   "notes": "In the first example:\\n\\\\begin{itemize}\\n    \\\\item Explanation 1...\\n    \\\\item Explanation 2...\\n\\\\end{itemize}",
   "tutorial": "### Method Explanation\\n\\nTo solve this problem optimally, observe that...\\n\\n### Complexity\\n- Time Complexity: $\\\\mathcal{O}(n \\\\log n)$\\n- Space Complexity: $\\\\mathcal{O}(n)$",
-  "checker_type": "std::wcmp.cpp",
+  "checker_type": "std::lcmp.cpp",
   "sample_tests": [
     {
       "input_text": "3\\n1 2 3\\n",
@@ -60,24 +60,46 @@ Original Webpage / Problem Content:
 """
 
 GENERATE_CODE_PROMPT = """You are an International Grandmaster Competitive Programmer and chief Polygon Problem Setter.
-Analyze the problem details carefully and implement the single MAIN, OPTIMAL, and 100% CORRECT C++20 solution.
+Analyze the problem details carefully and implement:
+1. `solution_cpp`: The single MAIN, OPTIMAL, and 100% CORRECT C++20 solution.
+2. `generator_cpp`: A complete, flawless C++20 testlib Generator (`gen.cpp`) producing exactly 20 distinct, mathematically rigorous test cases from minimal edge cases to MAXIMUM CONSTRAINTS ($N = N_{\\max}, \\sum N = \\text{SumMax}, 10^{18}$, etc.).
 
 REQUIREMENTS FOR MAIN SOLUTION (`solution_cpp`):
-1. Algorithmic Perfection:
-   - Must use the optimal algorithm (e.g. DP, Greedy with proof, Segment Tree/Fenwick, Binary Search, Graph BFS/Dijkstra/DSU, Math/Number Theory, Two Pointers).
-   - Time Complexity: Strictly $\\mathcal{O}(N)$, $\\mathcal{O}(N \\log N)$, or $\\mathcal{O}(\\log N) / \\mathcal{O}(1)$ for math. NEVER use naive $\\mathcal{O}(N^2)$ if $N > 2000$.
-   - Space Complexity: Strictly within the memory limit.
-2. Robustness & Overflow Safety:
-   - Prevent 32-bit integer overflow: ALWAYS use `long long` (or `int64_t`) for variables, sums, products, prefix sums, and DP states whenever values can exceed $2 \\cdot 10^9$.
-   - Fast I/O: ALWAYS include:
-     ```cpp
-     ios_base::sync_with_stdio(false);
-     cin.tie(NULL);
-     ```
-   - Standard headers: Use `#include <bits/stdc++.h>` and `using namespace std;`.
-   - Correct handling of multi-testcase $t$: Read $t$ first if input format specifies multi-testcase ($t$), and reset global data/vectors between test cases.
-3. Generator C++ (`generator_cpp`):
-   - Provide an optional testlib generator C++ supporting `int test = atoi(argv[1]);` with `mt19937_64 rng(13022007);` and `registerGen(argc, argv, 1);`.
+1. Optimal Algorithm: Strictly $\\mathcal{O}(N)$, $\\mathcal{O}(N \\log N)$, or $\\mathcal{O}(\\log N) / \\mathcal{O}(1)$.
+2. 64-bit safety: ALWAYS use `long long` (or `int64_t`) for variables, sums, products, prefix sums, and DP states whenever values can exceed $2 \\cdot 10^9$.
+3. Fast I/O: ALWAYS include:
+   ```cpp
+   ios_base::sync_with_stdio(false);
+   cin.tie(NULL);
+   ```
+4. Multi-testcase handling: If input has $t$ test cases, read $t$ first and cleanly reset vectors/variables for each test case.
+
+REQUIREMENTS FOR GENERATOR C++ (`generator_cpp`):
+1. Must use `#include "testlib.h"` and `#include <bits/stdc++.h>`.
+2. Must include `registerGen(argc, argv, 1);` and `int test = (argc > 1 ? atoi(argv[1]) : 1);`.
+3. Must seed with `mt19937_64 rng(13022007ULL + test * 999983ULL);` and helper `long long rd(long long l, long long r) { return uniform_int_distribution<long long>(l, r)(rng); }`.
+4. MUST handle the EXACT input format (including $t$ if the problem is multi-testcase).
+5. MUST implement 20 distinct branches for `test == 1` through `test == 20`:
+   - `test == 1`: Minimal lower bounds ($N = N_{\\min}$, minimal values).
+   - `test == 2`: Lower bounds with extreme small values (e.g. 0, 1, -10^9).
+   - `test == 3`: All elements identical / zero variance ($a_i = C$).
+   - `test == 4`: Parity & alternating patterns (odd/even, binary alternation).
+   - `test == 5`: Prime numbers / composites / powers of two ($2^k, 2^k-1$).
+   - `test == 6`: Monotonic patterns: strictly sorted ascending / descending.
+   - `test == 7`: Arithmetic progression / geometric progression / multiples.
+   - `test == 8`: Small random test with diverse values.
+   - `test == 9`: Medium scale test ($N \\approx 1000$).
+   - `test == 10`: Medium scale with high duplicate element frequency.
+   - `test == 11`: Anti-greedy / heuristic counter-example test.
+   - `test == 12`: Anti-hash / collision or high-frequency repetition.
+   - `test == 13`: Numbers with very large GCD / shared prime factors.
+   - `test == 14`: Large coordinate / 32-bit boundary values ($2 \\cdot 10^9$).
+   - `test == 15`: Large scale test ($N = N_{\\max} / 2$).
+   - `test == 16`: Large scale test with values strictly at maximum range.
+   - `test == 17`: Max constraint test ($N = N_{\\max}$, all elements equal to maximum).
+   - `test == 18`: Max constraint test ($N = N_{\\max}$, random across full $[\\min, \\max]$ domain).
+   - `test == 19`: Max constraint test ($N = N_{\\max}$, dense / tricky corner case at upper bound).
+   - `test == 20`: Absolute Maximum constraint stress test ($N = N_{\\max}, \\sum N = \\text{SumMax}$, extreme values, worst-case complexity pattern).
 
 Problem Details:
 ----------------
@@ -96,8 +118,8 @@ Checker Type: {checker_type}
 
 Return ONLY a valid JSON object with the following schema:
 {
-  "solution_cpp": "/* 100% Optimal, Flawless C++20 Main Solution */",
-  "generator_cpp": "/* testlib generator C++ code using testlib.h */",
+  "solution_cpp": "/* 100% Optimal C++20 Main Solution */",
+  "generator_cpp": "/* 100% Complete testlib.h Generator C++ with all 20 test branches */",
   "checker_type": "{checker_type}",
   "custom_checker_cpp": null
 }

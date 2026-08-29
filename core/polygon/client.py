@@ -20,7 +20,7 @@ class PolygonClient:
         api_key: str,
         api_secret: str,
         api_url: str = "https://polygon.codeforces.com/api/",
-        timeout: int = 45,
+        timeout: int = 90,
     ):
         self.api_key = api_key
         self.api_secret = api_secret
@@ -49,13 +49,15 @@ class PolygonClient:
         method_name: str,
         params: Optional[Dict[str, Any]] = None,
         files: Optional[Dict[str, Any]] = None,
-        max_retries: int = 5,
+        max_retries: int = 7,
+        timeout: Optional[int] = None,
     ) -> Any:
         """
-        Send a signed request to Polygon API with automatic retry on transient failures and 429 backoff.
+        Send a signed request to Polygon API with automatic retry on transient failures, 502/503/504 and 429 backoff.
         """
         base_params = dict(params or {})
         url = f"{self.api_url}{method_name}"
+        current_timeout = timeout if timeout is not None else self.timeout
         
         last_error = None
         for attempt in range(1, max_retries + 1):
@@ -71,19 +73,26 @@ class PolygonClient:
                         url,
                         data=req_params,
                         files=files,
-                        timeout=self.timeout,
+                        timeout=current_timeout,
                     )
                 else:
                     response = self.session.post(
                         url,
                         data=req_params,
-                        timeout=self.timeout,
+                        timeout=current_timeout,
                     )
                 
                 if response.status_code == 429:
                     # Polygon / Cloudflare Rate Limit -> sleep longer and retry
                     last_error = PolygonAPIError(f"HTTP 429 Too Many Requests on {method_name}")
-                    sleep_time = 4 * attempt
+                    sleep_time = min(4 * attempt + random.uniform(1, 2), 35)
+                    time.sleep(sleep_time)
+                    continue
+
+                if response.status_code in [500, 502, 503, 504, 520, 521, 522, 523, 524]:
+                    # Temporary Cloudflare / Polygon server gateway error -> backoff and retry
+                    last_error = PolygonAPIError(f"HTTP {response.status_code} Bad Gateway/Server Glitch on {method_name}")
+                    sleep_time = min(3 * attempt + random.uniform(1, 3), 30)
                     time.sleep(sleep_time)
                     continue
                 
@@ -92,7 +101,11 @@ class PolygonClient:
                         err_json = response.json()
                         err_msg = err_json.get("comment", response.text)
                     except Exception:
-                        err_msg = response.text
+                        text = response.text
+                        if "<title>" in text and "</title>" in text:
+                            err_msg = text.split("<title>")[1].split("</title>")[0].strip()
+                        else:
+                            err_msg = text[:200]
                     raise PolygonAPIError(f"HTTP {response.status_code}: {err_msg}")
                 
                 res_data = response.json()
@@ -102,13 +115,32 @@ class PolygonClient:
                 
                 return res_data.get("result")
             
+            except requests.exceptions.ReadTimeout as e:
+                last_error = e
+                if attempt < max_retries:
+                    # Double the timeout for the next retry attempt
+                    current_timeout = min(current_timeout * 2, 300)
+                    sleep_time = min(2 ** attempt + random.uniform(1, 2), 30)
+                    time.sleep(sleep_time)
+                else:
+                    raise PolygonAPIError(f"Failed calling {method_name} after {max_retries} attempts: Read timed out")
+            
+            except requests.exceptions.ConnectionError as e:
+                last_error = e
+                if attempt < max_retries:
+                    sleep_time = min(3 * attempt + random.uniform(1, 2), 30)
+                    time.sleep(sleep_time)
+                else:
+                    raise PolygonAPIError(f"Failed calling {method_name} after {max_retries} attempts: Connection error ({e})")
+
             except (requests.RequestException, PolygonAPIError) as e:
                 last_error = e
                 if attempt < max_retries:
-                    sleep_time = 2 * attempt
+                    sleep_time = min(2 ** attempt + random.uniform(1, 2), 30)
                     time.sleep(sleep_time)
                 else:
                     raise PolygonAPIError(f"Failed calling {method_name} after {max_retries} attempts: {last_error}")
+
 
     # ==================== Problem Management ====================
 
@@ -207,7 +239,7 @@ class PolygonClient:
         if file_type == "source" and source_type and name.endswith(".cpp"):
             params["sourceType"] = source_type
 
-        self.request("problem.saveFile", params=params)
+        self.request("problem.saveFile", params=params, timeout=120)
 
     # ==================== Checker & Validator ====================
 
@@ -225,6 +257,13 @@ class PolygonClient:
         self.request("problem.setChecker", {
             "problemId": problem_id,
             "checker": checker_name,
+        })
+
+    def save_tags(self, problem_id: int, tags: str) -> None:
+        """Save tags for problem (e.g. 'codeforces')."""
+        self.request("problem.saveTags", {
+            "problemId": problem_id,
+            "tags": tags,
         })
 
     # ==================== Solutions ====================
@@ -253,7 +292,7 @@ class PolygonClient:
         if source_type and name.endswith(".cpp"):
             params["sourceType"] = source_type
 
-        self.request("problem.saveSolution", params=params)
+        self.request("problem.saveSolution", params=params, timeout=120)
 
     # ==================== Tests & Script ====================
 
@@ -309,7 +348,7 @@ class PolygonClient:
         if test_description:
             params["testDescription"] = test_description
 
-        self.request("problem.saveTest", params)
+        self.request("problem.saveTest", params, timeout=120)
 
     def get_script(self, problem_id: int, testset: str = "tests") -> Optional[str]:
         """Get test generator script."""

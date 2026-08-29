@@ -121,14 +121,14 @@ class AIPipeline:
             indent=2,
         )
 
-        # 1. Step 1: Generate Optimal C++20 Main Solution
+        # 1. Step 1: Generate Optimal C++20 Main Solution & C++20 testlib Generator
         code_prompt = GENERATE_CODE_PROMPT.replace("{title}", problem.title)
         code_prompt = code_prompt.replace("{constraints}", problem.constraints or "Standard CP constraints")
         code_prompt = code_prompt.replace("{legend}", problem.legend[:4000])
         code_prompt = code_prompt.replace("{input_format}", problem.input_format[:2000])
         code_prompt = code_prompt.replace("{output_format}", problem.output_format[:2000])
         code_prompt = code_prompt.replace("{sample_tests_json}", sample_tests_json)
-        code_prompt = code_prompt.replace("{checker_type}", problem.checker_type)
+        code_prompt = code_prompt.replace("{checker_type}", problem.checker_type or "std::lcmp.cpp")
 
         code_result = self.llm.generate_json(code_prompt)
 
@@ -138,60 +138,21 @@ class AIPipeline:
         if chk_cpp:
             chk_cpp = self._sanitize_cpp_code(chk_cpp, is_testlib=True)
 
-        # 2. Step 2: Generate 20 Rigorous Test Inputs
-        test_prompt = GENERATE_TESTS_PROMPT.replace("{title}", problem.title)
-        test_prompt = test_prompt.replace("{constraints}", problem.constraints or "Standard CP constraints")
-        test_prompt = test_prompt.replace("{input_format}", problem.input_format[:2000])
-        test_prompt = test_prompt.replace("{sample_tests_json}", sample_tests_json)
+        checker_type = code_result.get("checker_type", problem.checker_type or "std::lcmp.cpp")
+        if "yesno" in checker_type.lower():
+            checker_type = "std::lcmp.cpp"
 
-        try:
-            tests_result = self.llm.generate_json(test_prompt)
-            raw_tests = tests_result.get("tests", [])
-        except Exception:
-            raw_tests = []
-
-        test_cases: List[TestCase] = []
-        for idx, t in enumerate(raw_tests, start=1):
-            input_data = t.get("input_data", "")
-            if not input_data.endswith("\n"):
-                input_data += "\n"
-            desc = t.get("description", f"Test {idx}")
-            test_cases.append(
-                TestCase(
-                    test_index=idx,
-                    input_data=input_data,
-                    description=desc,
-                    is_sample=False,
-                )
-            )
-
-        # Ensure we have at least num_tests
-        if len(test_cases) < num_tests:
-            while len(test_cases) < num_tests:
-                next_idx = len(test_cases) + 1
-                base_test = test_cases[-1].input_data if test_cases else "1\n"
-                test_cases.append(
-                    TestCase(
-                        test_index=next_idx,
-                        input_data=base_test,
-                        description=f"Generated Stress Test {next_idx}",
-                        is_sample=False,
-                    )
-                )
-        elif len(test_cases) > num_tests:
-            test_cases = test_cases[:num_tests]
-
-        for i, t in enumerate(test_cases, start=1):
-            t.test_index = i
+        # Build Polygon FreeMarker script for generator: <#list 1..N as i> gen ${i} > $ </#list>
+        script_lines = [f"<#list 1..{num_tests} as i>", "    gen ${i} > $", "</#list>"]
 
         gen_code = GeneratedCode(
             solution_cpp=sol_cpp,
             validator_cpp="",
             generator_cpp=gen_cpp,
-            checker_type=code_result.get("checker_type", problem.checker_type or "std::wcmp.cpp"),
+            checker_type=checker_type,
             custom_checker_cpp=chk_cpp,
-            tests=test_cases,
-            test_script_lines=[],
+            tests=[],
+            test_script_lines=script_lines,
         )
 
         verifier = LocalVerifier()
