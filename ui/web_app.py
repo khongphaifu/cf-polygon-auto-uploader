@@ -31,8 +31,7 @@ DASHBOARD_STATE = {
     "logs": [],
     "recent_records": [],
     "last_problem_data": None,
-    "active_keys_count": 0,
-    "model_name": "gemini-3.7-flash",
+    "model_name": "gemini-3.1-pro-preview",
 }
 
 
@@ -65,13 +64,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </div>
             <div>
                 <h1 class="text-lg font-bold bg-gradient-to-r from-blue-400 to-indigo-300 bg-clip-text text-transparent">CF Polygon Auto Uploader</h1>
-                <p class="text-xs text-slate-400">AI Problem Setter & 20-Test Multi-Solution Suite</p>
+                <p class="text-xs text-slate-400">10-Step Pipeline | Subtask Division | testlib.h Generator & Script</p>
             </div>
         </div>
         <div class="flex items-center space-x-4">
             <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-950 text-emerald-400 border border-emerald-800/50">
                 <span class="w-2 h-2 mr-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                Gemini 3.7 Flash
+                Gemini 3.1 Pro
             </span>
             <a href="/download-excel" class="px-4 py-2 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center space-x-2 transition shadow">
                 <i class="fa-solid fa-file-excel text-emerald-400"></i>
@@ -86,19 +85,26 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <!-- URL Submission Box -->
             <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
                 <h2 class="text-base font-semibold text-slate-200 flex items-center mb-4">
-                    <i class="fa-solid fa-link text-blue-400 mr-2"></i> Nhập link bài tập
+                    <i class="fa-solid fa-link text-blue-400 mr-2"></i> Nhập link bài tập & cấu hình tests
                 </h2>
                 <div class="space-y-4">
-                    <div>
-                        <label class="block text-xs font-medium text-slate-400 mb-1">Đường dẫn bài tập (Codeforces, AtCoder, CSES, VNOJ...)</label>
-                        <input type="text" id="urlInput" placeholder="https://codeforces.com/problemset/problem/158/A"
-                            class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 text-slate-100 placeholder-slate-600 transition">
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div class="md:col-span-3">
+                            <label class="block text-xs font-medium text-slate-400 mb-1">Đường dẫn bài tập (Codeforces, AtCoder, CSES, VNOJ...)</label>
+                            <input type="text" id="urlInput" placeholder="https://codeforces.com/problemset/problem/158/A"
+                                class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 text-slate-100 placeholder-slate-600 transition">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-400 mb-1">Số lượng tests</label>
+                            <input type="number" id="numTestsInput" value="30" min="5" max="100"
+                                class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 text-slate-100 transition text-center font-mono font-bold">
+                        </div>
                     </div>
                     <div class="flex items-center space-x-3">
                         <button onclick="startUpload()" id="btnStart"
                             class="flex-1 bg-blue-600 hover:bg-blue-500 active:scale-[0.99] text-white font-medium py-3 px-6 rounded-xl shadow-lg shadow-blue-600/30 flex items-center justify-center space-x-2 transition">
                             <i class="fa-solid fa-cloud-arrow-up"></i>
-                            <span>Bắt đầu Phân Tích & Nạp Polygon</span>
+                            <span>Bắt đầu Quy Trình 10 Bước Lên Polygon</span>
                         </button>
                     </div>
                 </div>
@@ -108,7 +114,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
                 <div class="flex items-center justify-between mb-4">
                     <h2 class="text-base font-semibold text-slate-200 flex items-center">
-                        <i class="fa-solid fa-terminal text-emerald-400 mr-2"></i> Tiến độ & Nhật ký thực thi
+                        <i class="fa-solid fa-terminal text-emerald-400 mr-2"></i> Tiến độ & Nhật ký 10 bước
                     </h2>
                     <span id="badgeStep" class="text-xs font-mono px-2.5 py-1 rounded bg-slate-800 text-slate-300">Sẵn sàng</span>
                 </div>
@@ -117,7 +123,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     <div id="progressBar" class="bg-gradient-to-r from-blue-500 to-emerald-400 h-2.5 rounded-full transition-all duration-500" style="width: 0%"></div>
                 </div>
                 <!-- Logs Console -->
-                <div id="logBox" class="bg-slate-950 border border-slate-800 rounded-xl p-4 h-64 overflow-y-auto font-mono text-xs text-slate-300 space-y-1.5 scrollbar-thin scrollbar-thumb-slate-800">
+                <div id="logBox" class="bg-slate-950 border border-slate-800 rounded-xl p-4 h-72 overflow-y-auto font-mono text-xs text-slate-300 space-y-1.5 scrollbar-thin scrollbar-thumb-slate-800">
                     <div class="text-slate-600 italic">// Hệ thống sẵn sàng tiếp nhận bài tập mới...</div>
                 </div>
             </div>
@@ -137,13 +143,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             <!-- Feature Badges -->
             <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-3">
-                <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Tiêu chuẩn Polygon tự động</h4>
+                <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Chuẩn 10 Bước Polygon</h4>
                 <div class="text-xs space-y-2 text-slate-300">
-                    <div class="flex items-center"><i class="fa-solid fa-check text-emerald-400 mr-2"></i> 20 bộ test phân cấp chặt chẽ</div>
-                    <div class="flex items-center"><i class="fa-solid fa-check text-emerald-400 mr-2"></i> Stress-test kép (Solution vs Brute-force)</div>
-                    <div class="flex items-center"><i class="fa-solid fa-check text-emerald-400 mr-2"></i> Đa giải pháp kiểm định (MA, OK, TL, WA, Py)</div>
-                    <div class="flex items-center"><i class="fa-solid fa-check text-emerald-400 mr-2"></i> Tự động biên soạn Lời giải (Tutorial)</div>
-                    <div class="flex items-center"><i class="fa-solid fa-check text-emerald-400 mr-2"></i> Phân quyền user 'codeforces' & build package</div>
+                    <div class="flex items-center"><i class="fa-solid fa-check text-emerald-400 mr-2"></i> 1. Đọc link & Chia Subtask</div>
+                    <div class="flex items-center"><i class="fa-solid fa-check text-emerald-400 mr-2"></i> 2. Ghi Statement LaTeX</div>
+                    <div class="flex items-center"><i class="fa-solid fa-check text-emerald-400 mr-2"></i> 3. Chọn Checker (wcmp/ncmp/custom)</div>
+                    <div class="flex items-center"><i class="fa-solid fa-check text-emerald-400 mr-2"></i> 4. Add gen.cpp (testlib.h)</div>
+                    <div class="flex items-center"><i class="fa-solid fa-check text-emerald-400 mr-2"></i> 5. Add solution.cpp (tag MA)</div>
+                    <div class="flex items-center"><i class="fa-solid fa-check text-emerald-400 mr-2"></i> 6. Ghi Script sinh test & groups</div>
+                    <div class="flex items-center"><i class="fa-solid fa-check text-emerald-400 mr-2"></i> 7. Commit changes</div>
+                    <div class="flex items-center"><i class="fa-solid fa-check text-emerald-400 mr-2"></i> 8. Build Packages & Auto-Repair</div>
+                    <div class="flex items-center"><i class="fa-solid fa-check text-emerald-400 mr-2"></i> 9. Manage access (codeforces)</div>
+                    <div class="flex items-center"><i class="fa-solid fa-check text-emerald-400 mr-2"></i> 10. Link CF & Cập nhật Excel</div>
                 </div>
             </div>
         </div>
@@ -152,11 +163,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <script>
         function copyText(text) {
             navigator.clipboard.writeText(text);
-            alert("Đã sao chép link Import Codeforces!");
+            alert("Đã sao chép link Import Codeforces:\n" + text);
         }
 
         async function startUpload() {
             const url = document.getElementById('urlInput').value.trim();
+            const numTests = parseInt(document.getElementById('numTestsInput').value) || 30;
             if (!url) {
                 alert("Vui lòng nhập đường link bài tập!");
                 return;
@@ -168,7 +180,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 await fetch('/api/start', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({url: url})
+                    body: JSON.stringify({url: url, num_tests: numTests})
                 });
             } catch (err) {
                 console.error(err);
@@ -180,18 +192,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 const res = await fetch('/api/status');
                 const data = await res.json();
 
-                // Update Progress & Status
                 document.getElementById('badgeStep').innerText = data.current_step || "Sẵn sàng";
                 document.getElementById('progressBar').style.width = (data.step_progress || 0) + "%";
 
-                // Update Logs
                 const logBox = document.getElementById('logBox');
                 if (data.logs && data.logs.length > 0) {
                     logBox.innerHTML = data.logs.map(l => `<div class="leading-relaxed">` + escapeHtml(l) + `</div>`).join('');
                     logBox.scrollTop = logBox.scrollHeight;
                 }
 
-                // Update Button State
                 if (data.is_running) {
                     document.getElementById('btnStart').disabled = true;
                     document.getElementById('btnStart').classList.add('opacity-50');
@@ -200,7 +209,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     document.getElementById('btnStart').classList.remove('opacity-50');
                 }
 
-                // Update Recent Records
                 if (data.recent_records && data.recent_records.length > 0) {
                     const listHtml = data.recent_records.map(r => `
                         <div class="p-3 bg-slate-950 rounded-xl border border-slate-800 hover:border-slate-700 transition space-y-1.5">
@@ -210,7 +218,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                                     ${r.package_state || r.status}
                                 </span>
                             </div>
-                            <div class="text-[11px] text-slate-400">ID: <span class="text-cyan-400 font-mono">${r.id}</span></div>
+                            <div class="text-[11px] text-slate-400">ID: <span class="text-cyan-400 font-mono">${r.id}</span> | Tests: <span class="text-yellow-400 font-mono">${r.total_tests || 0}</span></div>
+                            <div class="text-[10px] text-slate-500 truncate">${r.subtasks_summary || ""}</div>
                             <div class="pt-1 flex items-center space-x-2">
                                 <button onclick="copyText('${r.cf_import_url}')" class="text-[11px] px-2.5 py-1 rounded bg-blue-950 hover:bg-blue-900 text-blue-300 border border-blue-800 flex items-center space-x-1 transition">
                                     <i class="fa-solid fa-copy"></i>
@@ -252,22 +261,22 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
 
         elif parsed.path == "/api/status":
             self.send_response(200)
-            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Type", "application/json; charset=utf-8")
             self.end_headers()
             self.wfile.write(json.dumps(DASHBOARD_STATE).encode("utf-8"))
 
         elif parsed.path == "/download-excel":
-            excel_path = Path("problems_summary.xlsx")
+            config = load_config()
+            excel_path = Path(config.export.excel_file_path)
             if excel_path.exists():
                 self.send_response(200)
                 self.send_header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                self.send_header("Content-Disposition", "attachment; filename=problems_summary.xlsx")
+                self.send_header("Content-Disposition", f"attachment; filename={excel_path.name}")
                 self.end_headers()
                 self.wfile.write(excel_path.read_bytes())
             else:
                 self.send_response(404)
                 self.end_headers()
-                self.wfile.write(b"File not found")
         else:
             self.send_response(404)
             self.end_headers()
@@ -275,31 +284,39 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         parsed = urlparse(self.path)
         if parsed.path == "/api/start":
-            length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(length).decode("utf-8")
-            data = json.loads(body)
-            url = data.get("url", "").strip()
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length).decode("utf-8")
+            try:
+                data = json.loads(body)
+                url = data.get("url", "").strip()
+                num_tests = int(data.get("num_tests", 30))
+            except Exception:
+                url = ""
+                num_tests = 30
 
-            if url and not DASHBOARD_STATE["is_running"]:
-                thread = threading.Thread(target=process_url_worker, args=(url,))
-                thread.daemon = True
-                thread.start()
+            if not url or DASHBOARD_STATE["is_running"]:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Already running or invalid URL"}).encode("utf-8"))
+                return
+
+            threading.Thread(target=run_pipeline_background, args=(url, num_tests), daemon=True).start()
 
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
-            self.wfile.write(json.dumps({"status": "started"}).encode("utf-8"))
+            self.wfile.write(json.dumps({"status": "started", "url": url, "num_tests": num_tests}).encode("utf-8"))
         else:
             self.send_response(404)
             self.end_headers()
 
 
-def process_url_worker(url: str):
-    """Background worker executing the complete pipeline."""
+def run_pipeline_background(url: str, num_tests: int = 30):
     DASHBOARD_STATE["is_running"] = True
     DASHBOARD_STATE["current_url"] = url
     DASHBOARD_STATE["logs"] = []
-    add_dashboard_log(f"Bắt đầu xử lý bài tập: {url}", step="Khởi động", progress=5)
+    add_dashboard_log(f"Bắt đầu xử lý bài tập: {url} (Yêu cầu {num_tests} tests)", step="Khởi động", progress=5)
 
     config: AppConfig = load_config()
     polygon_client = PolygonClient(
@@ -320,25 +337,24 @@ def process_url_worker(url: str):
     record = PolygonProblemRecord(id=0, name="Unknown", source_url=url, status="RUNNING")
 
     try:
-        # Step 1: Scrape
-        add_dashboard_log("Đang cào nội dung đề bài từ trang nguồn...", step="1/9 Cào đề bài", progress=15)
+        # Bước 1: Đọc link & Phân tích đề bài + Subtasks
+        add_dashboard_log("Bước 1/10: Đang cào dữ liệu và phân tích Subtasks...", step="1/10 Đọc link & Subtasks", progress=10)
         raw_text = scrape_problem_text(url)
         if not raw_text or len(raw_text.strip()) < 30:
             raise ValueError("Không thể lấy nội dung bài tập từ link.")
-        add_dashboard_log(f"Đã cào thành công ({len(raw_text)} ký tự).", step="1/9 Hoàn tất cào", progress=20)
-
-        # Step 2: AI Parse
-        add_dashboard_log("AI Gemini 3.7 Flash đang phân tích đề bài, công thức và tạo Tutorial...", step="2/9 Phân tích AI", progress=30)
         problem_data: ProblemData = ai_pipeline.parse_problem_content(url, raw_text)
-        add_dashboard_log(f"Đã phân tích: {problem_data.title} ({problem_data.short_name})", step="2/9 Hoàn tất AI", progress=40)
+        add_dashboard_log(f"Đã phân tích: {problem_data.title} ({problem_data.short_name})", step="1/10 Hoàn tất AI", progress=20)
 
-        # Step 3: AI Code & Tests
-        add_dashboard_log("AI đang viết Solution C++20 tối ưu và sinh 20 bộ test chặt chẽ...", step="3/9 Sinh Code & Test", progress=50)
-        gen_code: GeneratedCode = ai_pipeline.generate_code_and_tests(problem_data, num_tests=config.generation.num_tests)
-        add_dashboard_log(f"Đã kiểm định và sinh đáp án trực tiếp cho {len(gen_code.tests)} tests.", step="3/9 Hoàn tất Code", progress=60)
+        # Log Subtasks
+        for s in problem_data.subtasks:
+            add_dashboard_log(f"  * Subtask {s.subtask_id} ({s.points} pts): {s.description}")
 
-        # Step 4: Polygon Problem Init
-        add_dashboard_log("Đang tạo / liên kết bài tập trên Polygon Codeforces...", step="4/9 Khởi tạo Polygon", progress=65)
+        # AI Code, Generator, Script & Local Dual-Verification
+        add_dashboard_log(f"AI đang viết Solution C++20 tối ưu, Generator và Script ({num_tests} tests)...", step="Sinh Code & Script", progress=30)
+        gen_code: GeneratedCode = ai_pipeline.generate_code_and_tests(problem_data, num_tests=num_tests)
+        add_dashboard_log(f"Đã kiểm định cục bộ và sinh đáp án trực tiếp cho {len(gen_code.tests)} tests.", step="Kiểm định cục bộ OK", progress=40)
+
+        # Khởi tạo Problem trên Polygon
         p_info = polygon_auto.get_or_create_problem(problem_data.short_name)
         problem_id = p_info["id"]
         owner = p_info.get("owner") or "luatgay"
@@ -347,31 +363,38 @@ def process_url_worker(url: str):
         record.owner = owner
         record.url = f"https://polygon.codeforces.com/p{problem_id}/{problem_data.short_name}"
         record.cf_import_url = f"https://polygon.codeforces.com/p{problem_id}/{owner}/{problem_data.short_name}"
-        add_dashboard_log(f"Polygon ID: {problem_id} | Link Import: {record.cf_import_url}", step="4/9 Polygon OK", progress=70)
+        record.total_tests = len(gen_code.tests)
 
-        # Step 5: Statement
-        add_dashboard_log("Đang tải Statement LaTeX & Tutorial lên Polygon...", step="5/9 Tải Statement", progress=75)
+        # Bước 2: Ghi Statement
+        add_dashboard_log("Bước 2/10: Đang ghi Statement LaTeX & Giới hạn lên Polygon...", step="2/10 Ghi Statement", progress=50)
         polygon_auto.setup_problem_statement(problem_id, problem_data)
 
-        # Step 6: Code Files
-        add_dashboard_log("Đang nạp Solution C++20 chính và Checker lên Polygon...", step="6/9 Nạp mã nguồn", progress=80)
-        polygon_auto.setup_code_files(problem_id, gen_code)
+        # Bước 3: Chọn Checker
+        add_dashboard_log(f"Bước 3/10: Thiết lập Checker ({gen_code.checker_type})...", step="3/10 Chọn Checker", progress=55)
+        polygon_auto.setup_checker(problem_id, gen_code)
 
-        # Step 7: Tests
-        add_dashboard_log(f"Đang nạp {len(problem_data.sample_tests)} test mẫu và {len(gen_code.tests)} test tự sinh...", step="7/9 Nạp tests", progress=85)
-        polygon_auto.setup_tests(problem_id, problem_data, gen_code)
+        # Bước 4: Add file sinh test
+        add_dashboard_log("Bước 4/10: Nạp file sinh test (gen.cpp dùng testlib.h) lên Polygon Files...", step="4/10 Add gen.cpp", progress=60)
+        polygon_auto.setup_generator(problem_id, gen_code)
 
-        # Step 8: Access
-        if config.generation.auto_grant_access_to_codeforces:
-            add_dashboard_log("Đang cấp quyền chia sẻ cho user 'codeforces'...", step="8/9 Phân quyền", progress=90)
-            polygon_auto.grant_access_to_codeforces(problem_id)
+        # Bước 5: Add file solution
+        add_dashboard_log("Bước 5/10: Nạp Solution C++20 chính (solution.cpp tag MA) lên Polygon...", step="5/10 Add solution.cpp", progress=65)
+        polygon_auto.setup_solution(problem_id, gen_code)
 
-        # Step 9: Package with Auto-Repair
+        # Bước 6: Ghi script sinh test & tests
+        add_dashboard_log(f"Bước 6/10: Ghi Script sinh test và nạp {len(gen_code.tests)} tests chia subtask...", step="6/10 Ghi Script Tests", progress=70)
+        polygon_auto.setup_test_script_and_tests(problem_id, problem_data, gen_code)
+
+        # Bước 7: Commit changes
+        add_dashboard_log("Bước 7/10: Commit working copy trên Polygon...", step="7/10 Commit Changes", progress=75)
+        polygon_auto.commit_changes(problem_id, f"Auto-commit: added statement, checker, generator, solution MA, and test script with {len(gen_code.tests)} tests")
+
+        # Bước 8: Package with Auto-Repair
         if config.generation.auto_package:
-            add_dashboard_log("Đang yêu cầu Polygon build Full Package & verify (kèm Auto-Repair)...", step="9/9 Build Package", progress=95)
+            add_dashboard_log("Bước 8/10: Yêu cầu Polygon build Full Package & verify (kèm Auto-Repair)...", step="8/10 Build Package", progress=85)
             pkg_res = polygon_auto.build_and_wait_package(
                 problem_id,
-                timeout_sec=120,
+                timeout_sec=60,
                 poll_interval=4,
                 problem=problem_data,
                 code=gen_code,
@@ -385,10 +408,22 @@ def process_url_worker(url: str):
                 add_dashboard_log(f"❌ Package FAILED: {record.error_message}", step="Thất bại", progress=100)
             else:
                 record.status = "SUCCESS"
-                add_dashboard_log(f"🎉 Hoàn tất thành công bài tập: {problem_data.title} (Package: {record.package_state})", step="Hoàn thành", progress=100)
+                add_dashboard_log(f"✓ Package READY (ID: {record.package_id})", step="Package READY", progress=90)
         else:
             record.status = "SUCCESS"
-            add_dashboard_log(f"🎉 Hoàn tất lưu bài tập: {problem_data.title}", step="Hoàn thành", progress=100)
+
+        # Bước 9: Manage Access
+        if config.generation.auto_grant_access_to_codeforces:
+            add_dashboard_log("Bước 9/10: Cấp quyền chia sẻ cho user 'codeforces'...", step="9/10 Phân quyền", progress=95)
+            polygon_auto.grant_access_to_codeforces(problem_id)
+
+        # Bước 10: Link hoàn chỉnh & Excel
+        subtasks_summary = ", ".join([f"Subtask {s.subtask_id} ({s.points} pts: {s.test_count} tests)" for s in problem_data.subtasks])
+        record.subtasks_summary = subtasks_summary
+
+        if record.status == "SUCCESS":
+            add_dashboard_log(f"🎉 Bước 10/10: HOÀN TẤT THÀNH CÔNG BÀI TẬP: {problem_data.title}!", step="Hoàn thành", progress=100)
+            add_dashboard_log(f"👉 Link Import Codeforces: {record.cf_import_url}", step="Hoàn thành", progress=100)
 
     except Exception as e:
         record.status = "FAILED"
@@ -415,6 +450,8 @@ def process_url_worker(url: str):
         "status": record.status,
         "cf_import_url": record.cf_import_url,
         "url": record.url,
+        "total_tests": record.total_tests,
+        "subtasks_summary": record.subtasks_summary,
     })
     DASHBOARD_STATE["is_running"] = False
 
@@ -432,5 +469,3 @@ def start_web_dashboard(port: int = 8080, open_browser: bool = True):
 
 if __name__ == "__main__":
     start_web_dashboard()
-
-

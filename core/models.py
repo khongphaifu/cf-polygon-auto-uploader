@@ -13,6 +13,18 @@ class SampleTestCase:
 
 
 @dataclass
+class SubtaskData:
+    subtask_id: int            # 1, 2, 3...
+    points: float              # e.g. 30.0, 40.0
+    description: str           # e.g. "n <= 100, a_i <= 1000"
+    generator_args_hint: str = ""   # e.g. "small"
+    test_count: int = 0        # number of tests allocated for this subtask
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
 class ProblemData:
     source_url: str
     title: str
@@ -27,6 +39,7 @@ class ProblemData:
     memory_limit_mb: int = 256
     checker_type: str = "std::wcmp.cpp"
     sample_tests: List[SampleTestCase] = field(default_factory=list)
+    subtasks: List[SubtaskData] = field(default_factory=list)
     raw_html: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
@@ -40,8 +53,10 @@ class TestCase:
     expected_output: Optional[str] = None  # Generated directly from solution.cpp execution
     description: str = ""
     is_sample: bool = False
+    subtask_id: Optional[int] = None
     group: Optional[str] = None
     points: Optional[float] = None
+    script_command: Optional[str] = None  # Command in Polygon script (e.g. "gen 1 101 min > $")
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -60,6 +75,7 @@ class GeneratedCode:
     custom_checker_cpp: Optional[str] = None
     tests: List[TestCase] = field(default_factory=list)
     test_script_lines: List[str] = field(default_factory=list)
+    subtasks: List[SubtaskData] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -80,6 +96,8 @@ class PolygonProblemRecord:
     created_at: str = ""
     status: str = "PENDING"  # PENDING, SUCCESS, FAILED
     error_message: Optional[str] = None
+    total_tests: int = 0
+    subtasks_summary: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

@@ -9,7 +9,7 @@ from core.models import PolygonProblemRecord
 
 
 class ExcelExporter:
-    """Exports processed problem records to a beautifully styled Excel workbook."""
+    """Exports processed problem records to a beautifully styled Excel workbook with subtask details."""
 
     HEADERS = [
         "STT",
@@ -18,6 +18,8 @@ class ExcelExporter:
         "Polygon Problem ID",
         "Link Polygon",
         "Link Add Codeforces (Import URL)",
+        "Số Lượng Test",
+        "Subtasks & Điểm",
         "Trạng Thái Package",
         "Package ID",
         "Sẵn Sàng Import CF",
@@ -56,19 +58,18 @@ class ExcelExporter:
         for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=1, max_col=len(self.HEADERS)):
             for cell in row:
                 cell.border = thin_border
-                if cell.column in [1, 4, 7, 8, 9, 10]:
+                if cell.column in [1, 4, 7, 9, 10, 11, 12]:
                     cell.alignment = Alignment(horizontal="center", vertical="center")
                 else:
                     cell.alignment = Alignment(vertical="center")
 
-        # Color-code status
         green_fill = PatternFill(start_color="E2EFDA", end_color="E2EFDA", fill_type="solid")
         green_font = Font(color="375623", bold=True)
         red_fill = PatternFill(start_color="FCE4D6", end_color="FCE4D6", fill_type="solid")
         red_font = Font(color="C65911", bold=True)
 
         for row_idx in range(2, ws.max_row + 1):
-            pkg_cell = ws.cell(row=row_idx, column=7)
+            pkg_cell = ws.cell(row=row_idx, column=9)
             if pkg_cell.value in ["READY", "SUCCESS"]:
                 pkg_cell.fill = green_fill
                 pkg_cell.font = green_font
@@ -76,12 +77,11 @@ class ExcelExporter:
                 pkg_cell.fill = red_fill
                 pkg_cell.font = red_font
 
-            cf_cell = ws.cell(row=row_idx, column=9)
+            cf_cell = ws.cell(row=row_idx, column=11)
             if cf_cell.value == "YES":
                 cf_cell.fill = green_fill
                 cf_cell.font = green_font
 
-        # Adjust column widths
         for col in ws.columns:
             max_len = 0
             col_letter = get_column_letter(col[0].column)
@@ -94,7 +94,8 @@ class ExcelExporter:
         ws.column_dimensions["C"].width = 36
         ws.column_dimensions["E"].width = 42
         ws.column_dimensions["F"].width = 46
-        ws.column_dimensions["K"].width = 30
+        ws.column_dimensions["H"].width = 35
+        ws.column_dimensions["M"].width = 30
 
     def export_records(self, records: List[PolygonProblemRecord]) -> str:
         """Export or append problem records into Excel file."""
@@ -102,7 +103,6 @@ class ExcelExporter:
             try:
                 wb = openpyxl.load_workbook(self.output_path)
                 ws = wb.active
-                # Verify header match
                 if [cell.value for cell in ws[1]] != self.HEADERS:
                     wb = openpyxl.Workbook()
                     ws = wb.active
@@ -119,7 +119,6 @@ class ExcelExporter:
             ws.title = "Problems"
             self._setup_headers(ws)
 
-        # Existing IDs to avoid duplicates
         existing_ids = set()
         for r in range(2, ws.max_row + 1):
             val = ws.cell(row=r, column=4).value
@@ -136,14 +135,15 @@ class ExcelExporter:
             polygon_url = rec.url or f"https://polygon.codeforces.com/p{rec.id}/{rec.name}"
 
             if rec.id in existing_ids:
-                # Update existing row
                 for r in range(2, ws.max_row + 1):
                     if ws.cell(row=r, column=4).value == rec.id:
                         ws.cell(row=r, column=6, value=cf_import_url)
-                        ws.cell(row=r, column=7, value=rec.package_state or rec.status)
-                        ws.cell(row=r, column=8, value=rec.package_id)
-                        ws.cell(row=r, column=9, value="YES" if rec.package_state == "READY" else "PENDING")
-                        ws.cell(row=r, column=11, value=rec.error_message or "")
+                        ws.cell(row=r, column=7, value=rec.total_tests or "-")
+                        ws.cell(row=r, column=8, value=rec.subtasks_summary or "-")
+                        ws.cell(row=r, column=9, value=rec.package_state or rec.status)
+                        ws.cell(row=r, column=10, value=rec.package_id)
+                        ws.cell(row=r, column=11, value="YES" if rec.package_state == "READY" else "PENDING")
+                        ws.cell(row=r, column=13, value=rec.error_message or "")
                         break
             else:
                 stt += 1
@@ -157,6 +157,8 @@ class ExcelExporter:
                     rec.id,
                     polygon_url,
                     cf_import_url,
+                    rec.total_tests or "-",
+                    rec.subtasks_summary or "-",
                     rec.package_state or rec.status,
                     rec.package_id or "-",
                     is_cf_ready,
@@ -165,7 +167,6 @@ class ExcelExporter:
                 ]
                 ws.append(row_data)
 
-                # Set hyperlinks
                 current_row = ws.max_row
                 if rec.source_url:
                     ws.cell(row=current_row, column=3).hyperlink = rec.source_url

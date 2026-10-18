@@ -33,6 +33,12 @@ def main():
         help="Đường link bài tập cần cào và tải lên Polygon (e.g. LeetCode, AtCoder, Codeforces, VNOJ, CSES).",
     )
     parser.add_argument(
+        "--num-tests", "-n",
+        type=int,
+        default=None,
+        help="Số lượng test cần sinh (mặc định theo cấu hình: 30 test, tự động chia theo subtask).",
+    )
+    parser.add_argument(
         "--batch", "-b",
         type=str,
         help="Đường dẫn file txt chứa danh sách link bài tập (mỗi dòng một link).",
@@ -63,7 +69,7 @@ def main():
     elif args.list:
         cli.view_polygon_problems()
     elif args.url:
-        cli.process_single_url(args.url)
+        cli.process_single_url(args.url, num_tests=args.num_tests)
     elif args.batch:
         batch_file = Path(args.batch)
         if not batch_file.exists():
@@ -74,7 +80,7 @@ def main():
         print(f"Bắt đầu xử lý {len(urls)} URLs từ {args.batch}...")
         results = []
         for u in urls:
-            rec = cli.process_single_url(u)
+            rec = cli.process_single_url(u, num_tests=args.num_tests)
             if rec:
                 results.append(rec)
         cli.display_summary_table(results)

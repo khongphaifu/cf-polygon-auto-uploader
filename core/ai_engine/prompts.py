@@ -28,7 +28,23 @@ CRITICAL FORMATTING GUIDELINES FOR STATEMENT:
    - `constraints`: A concise, complete summary of all variable bounds.
    - `notes`: A beautifully formatted step-by-step explanation using `\\begin{itemize} \\item ... \\end{itemize}` with clear math formulas.
    - `tutorial`: A complete, comprehensive, and beautiful Editorial / Tutorial written in Polygon LaTeX explaining the key observations, algorithmic solution, mathematical proof, and time/space complexity analysis (e.g. $\\mathcal{O}(n \\log n)$).
-4. Checker Selection:
+4. Subtasks Identification & Division (CRITICAL FOR OLYMPIAD & SUBTASK GRADING):
+   - Check if the original problem specifies subtasks (e.g. Subtask 1: $N \\le 100$ [30%], Subtask 2: $N \\le 2000$ [30%], Subtask 3: $N \\le 2 \\cdot 10^5$ [40%]).
+   - If subtasks exist: Extract them accurately into the `subtasks` array.
+   - If the original problem does NOT have subtasks: Intelligently create 3 standard competitive programming subtasks:
+     * Subtask 1 (30 points): Small constraints / Brute-force ($N \\le 100$, small values, $\\mathcal{O}(N^2)$ or brute force).
+     * Subtask 2 (30 points): Medium constraints / Tricky boundary edge cases & 32-bit overflow ($N \\le 2000$, $\\mathcal{O}(N^2)$, $10^9$ values).
+     * Subtask 3 (40 points): Full constraints / Maximum scale & stress test ($N = N_{\\max}$, $\\sum N = \\text{SumMax}$, $\\mathcal{O}(N \\log N)$ or $\\mathcal{O}(N)$).
+   - In `notes` or `legend`, always append a cleanly formatted Subtask table using LaTeX:
+     ```latex
+     \\textbf{Subtasks:}
+     \\begin{itemize}
+         \\item Subtask 1 (30 points): $n \\le 100$.
+         \\item Subtask 2 (30 points): $n \\le 2000$.
+         \\item Subtask 3 (40 points): No additional constraints.
+     \\end{itemize}
+     ```
+5. Checker Selection:
    - Choose the exact matching checker: "std::wcmp.cpp" (tokens), "std::ncmp.cpp" (integers), "std::rcmp6.cpp" (float 10^-6), "std::rcmp9.cpp" (float 10^-9), "std::yesno.cpp" (YES/NO), "std::lcmp.cpp" (lines), or "custom".
 
 Return ONLY a valid JSON object with the following fields:
@@ -41,9 +57,29 @@ Return ONLY a valid JSON object with the following fields:
   "input_format": "Detailed input format specification...",
   "output_format": "Detailed output format specification...",
   "constraints": "Summary of all variable constraints...",
-  "notes": "In the first example:\\n\\\\begin{itemize}\\n    \\\\item Explanation 1...\\n    \\\\item Explanation 2...\\n\\\\end{itemize}",
+  "notes": "In the first example:\\n\\\\begin{itemize}\\n    \\\\item Explanation 1...\\n    \\\\item Explanation 2...\\n\\\\end{itemize}\\n\\n\\\\textbf{Subtasks:}\\n\\\\begin{itemize}\\n    \\\\item Subtask 1 (30 points): $n \\\\le 100$.\\n    \\\\item Subtask 2 (30 points): $n \\\\le 2000$.\\n    \\\\item Subtask 3 (40 points): No additional constraints.\\n\\\\end{itemize}",
   "tutorial": "### Method Explanation\\n\\nTo solve this problem optimally, observe that...\\n\\n### Complexity\\n- Time Complexity: $\\\\mathcal{O}(n \\\\log n)$\\n- Space Complexity: $\\\\mathcal{O}(n)$",
   "checker_type": "std::wcmp.cpp",
+  "subtasks": [
+    {
+      "subtask_id": 1,
+      "points": 30.0,
+      "description": "$n \\\\le 100$",
+      "generator_args_hint": "small"
+    },
+    {
+      "subtask_id": 2,
+      "points": 30.0,
+      "description": "$n \\\\le 2000$",
+      "generator_args_hint": "medium_overflow"
+    },
+    {
+      "subtask_id": 3,
+      "points": 40.0,
+      "description": "No additional constraints",
+      "generator_args_hint": "max_stress"
+    }
+  ],
   "sample_tests": [
     {
       "input_text": "3\\n1 2 3\\n",
@@ -60,9 +96,12 @@ Original Webpage / Problem Content:
 """
 
 GENERATE_CODE_PROMPT = """You are an International Grandmaster Competitive Programmer and chief Polygon Problem Setter.
-Analyze the problem details carefully and implement the single MAIN, OPTIMAL, and 100% CORRECT C++20 solution.
+Analyze the problem details carefully and implement:
+1. The single MAIN, OPTIMAL, and 100% CORRECT C++20 solution (`solution_cpp`).
+2. A high-quality test generator C++ (`generator_cpp`) using `testlib.h`.
+3. A Polygon Test Script (`test_script_lines`) that calls the generator to produce EXACTLY {num_tests} tests distributed across the defined subtasks.
 
-REQUIREMENTS FOR MAIN SOLUTION (`solution_cpp`):
+CRITICAL REQUIREMENTS FOR MAIN SOLUTION (`solution_cpp`):
 1. Algorithmic Perfection:
    - Must use the optimal algorithm (e.g. DP, Greedy with proof, Segment Tree/Fenwick, Binary Search, Graph BFS/Dijkstra/DSU, Math/Number Theory, Two Pointers).
    - Time Complexity: Strictly $\\mathcal{O}(N)$, $\\mathcal{O}(N \\log N)$, or $\\mathcal{O}(\\log N) / \\mathcal{O}(1)$ for math. NEVER use naive $\\mathcal{O}(N^2)$ if $N > 2000$.
@@ -76,13 +115,36 @@ REQUIREMENTS FOR MAIN SOLUTION (`solution_cpp`):
      ```
    - Standard headers: Use `#include <bits/stdc++.h>` and `using namespace std;`.
    - Correct handling of multi-testcase $t$: Read $t$ first if input format specifies multi-testcase ($t$), and reset global data/vectors between test cases.
-3. Generator C++ (`generator_cpp`):
-   - Provide an optional testlib generator C++ supporting `int test = atoi(argv[1]);` with `mt19937_64 rng(13022007);` and `registerGen(argc, argv, 1);`.
+
+CRITICAL REQUIREMENTS FOR GENERATOR (`generator_cpp`):
+1. Use `testlib.h` with `registerGen(argc, argv, 1);`.
+2. Generator must parse arguments from command line:
+   - `int subtask = opt<int>(1, 1);` or `atoi(argv[1])`: Subtask ID (1, 2, 3...).
+   - `int seed = opt<int>(2, 1);` or `atoi(argv[2])`: Seed for variety.
+   - Additional arguments (optional, e.g. scale, type_flag).
+3. The generator MUST strictly respect the constraints of each subtask:
+   - Subtask 1: Small limits ($N \\le 100$), minimal values, brute-force boundary.
+   - Subtask 2: Medium limits ($N \\le 2000$), corner cases, 32-bit overflow values ($> 2 \\cdot 10^9$), alternating patterns.
+   - Subtask 3: Full limits ($N = N_{\\max}$), maximum sum, dense graph, stress tests.
+4. Output must match the EXACT `Input Format` of the problem (including $t$ if multi-testcase).
+5. Must compile cleanly with standard C++17/C++20 and testlib.h without any undefined behavior.
+
+CRITICAL REQUIREMENTS FOR TEST SCRIPT (`test_script_lines`):
+1. Each line is a Polygon script directive:
+   - To set group: `> group 1`
+   - To generate test: `gen 1 101 min > $`
+   - For subtask 2: `> group 2` then `gen 2 201 mid > $`
+   - For subtask 3: `> group 3` then `gen 3 301 max > $`
+2. Total tests generated across all groups must be EXACTLY {num_tests}.
+3. Distribute tests proportionally to the subtask points:
+   {subtasks_distribution_hint}
 
 Problem Details:
 ----------------
 Title: {title}
 Constraints: {constraints}
+Subtasks:
+{subtasks_json}
 Legend:
 {legend}
 Input Format:
@@ -92,73 +154,62 @@ Output Format:
 Sample Tests:
 {sample_tests_json}
 Checker Type: {checker_type}
+Total Target Tests: {num_tests}
 ----------------
 
 Return ONLY a valid JSON object with the following schema:
 {
   "solution_cpp": "/* 100% Optimal, Flawless C++20 Main Solution */",
   "generator_cpp": "/* testlib generator C++ code using testlib.h */",
+  "test_script_lines": [
+    "> group 1",
+    "gen 1 101 min > $",
+    "gen 1 102 small > $",
+    "> group 2",
+    "gen 2 201 mid > $",
+    "gen 2 202 overflow > $",
+    "> group 3",
+    "gen 3 301 max > $",
+    "gen 3 302 stress > $"
+  ],
   "checker_type": "{checker_type}",
   "custom_checker_cpp": null
 }
 """
 
-GENERATE_TESTS_PROMPT = """You are an International Grandmaster Competitive Programmer and Polygon Problem Setter.
-Generate EXACTLY 20 concrete, mathematically strict, and edge-case exhaustive test inputs for this problem (DO NOT include sample tests).
-Every single test must be 100% compliant with the `Input Format` and `Constraints`.
+GENERATE_TESTS_FALLBACK_PROMPT = """You are an International Grandmaster Competitive Programmer and Polygon Problem Setter.
+Generate concrete test inputs for this problem divided into the specified subtasks.
+Every single test must be 100% compliant with the `Input Format` and `Constraints` of its subtask.
 
 Problem Details:
 ----------------
 Title: {title}
 Constraints: {constraints}
 Input Format: {input_format}
+Subtasks:
+{subtasks_json}
 Sample Tests:
 {sample_tests_json}
+Target Tests Count: {num_tests}
 ----------------
-
-RIGOROUS 20-TEST HIERARCHICAL STRUCTURE (Comprehensive & Exhaustive):
-- Test 1: Minimal example / small edge case ($N = N_{\\min}$, minimal values).
-- Test 2: Absolute boundary minimums (all variables at absolute lower limits, e.g. $0, 1, -10^9$).
-- Test 3: Off-by-one boundary test ($N_{\\min} + 1$, transition points).
-- Test 4: Special mathematical properties: Perfect squares / non-squares ($k^2, k^2-1, k^2+1$).
-- Test 5: Prime numbers / composites / powers of two ($2^k-1, 2^k$, large primes).
-- Test 6: Parity & symmetry edge cases (all odd, all even, alternating parity, symmetric palindrome patterns).
-- Test 7: Identical elements / zero variance (all array elements equal, or all identical characters like `aaaa...a`).
-- Test 8: Monotonic patterns: strictly increasing sorted array / strictly decreasing reverse-sorted array.
-- Test 9: Scale transition boundary ($N = 100$, values $\\approx 10^3$).
-- Test 10: Scale transition boundary ($N = 1000$, values $\\approx 10^6$).
-- Test 11: Power of 10 boundary ($10^5, 10^6 - 1, 10^6, 10^6 + 1$).
-- Test 12: 32-bit boundary & integer overflow traps ($2^{31}-1 = 2147483647$, $10^9$).
-- Test 13: 64-bit maximum boundary ($10^{18} - 1, 10^{18}$, $2^{60}$, large coordinate values).
-- Test 14: Tricky / "Hiểm" case 1: Anti-greedy / counter-example specifically crafted to kill naive heuristics.
-- Test 15: Tricky / "Hiểm" case 2: Anti-hash / collision or high-frequency repetition to kill naive unordered_map / hash sets.
-- Test 16: Tricky / "Hiểm" case 3: Extreme degenerate structure (e.g. star graph, linear chain graph, all elements coprime, single mismatch at the very last position).
-- Test 17: Small random test ($N \\approx 50 - 100$, diverse values).
-- Test 18: Medium random test ($N \\approx 1000 - 5000$, diverse values).
-- Test 19: Maximum constraint stress test ($N = N_{\\max}$, max values, dense data).
-- Test 20: Maximum constraint stress test ($N = N_{\\max}$, $\\sum N = \\text{SumMax}$, maximum queries/operations).
-
-FORMATTING RULES:
-- Every single test case MUST strictly adhere to the exact `Input Format` and `Constraints`.
-- If multi-testcase $t$ is required, the very first line of each test MUST be $t$ (e.g. `1` for a single query test, or `5`, etc.), followed by the exact input structure.
-- String characters, array lengths, and values must stay strictly within $[\\min, \\max]$.
-- Ensure all 20 tests are completely filled, non-empty, and unique.
 
 Return ONLY a valid JSON object with the following schema:
 {
   "tests": [
     {
       "test_index": 1,
+      "subtask_id": 1,
       "input_data": "1\\n5\\n",
-      "description": "Minimal example test"
+      "description": "Minimal example test",
+      "script_command": "gen 1 101 min > $"
     }
   ]
 }
 """
 
-FIX_CODE_PROMPT = """You are an International Grandmaster Competitive Programmer and Polygon Problem Setter.
-The previous solution or test case failed local verification or Polygon package build with the error described below.
-Analyze the bug carefully and fix the C++20 solution (`solution_cpp`).
+FIX_CODE_PROMPT = """You are an International Grandmaster Competitive Programmer and chief Polygon Problem Setter.
+The previous solution, generator, or test script failed local verification or Polygon package build with the error described below.
+Analyze the bug carefully and provide the fixed code.
 
 Problem Title: {title}
 Constraints: {constraints}
@@ -166,33 +217,48 @@ Input Format: {input_format}
 Output Format: {output_format}
 Sample Tests: {sample_tests_json}
 
-Current Code:
+Current solution_cpp:
 ```cpp
-{current_code}
+{current_solution_cpp}
 ```
 
-Error Details / Compiler Output / Test Failure:
+Current generator_cpp:
+```cpp
+{current_generator_cpp}
+```
+
+Current script lines:
+{current_script_lines}
+
+Error Details / Compiler Output / Verification Failure:
 --------------------
 {error_details}
 --------------------
 
-Fix the bug completely. Ensure optimal time complexity, correct logic, 64-bit integer overflow protection (`long long`), and fast I/O.
+Fix the bug completely.
+- If solution_cpp failed compilation or execution, fix solution_cpp.
+- If generator_cpp failed compilation or execution, fix generator_cpp.
+- If script lines were invalid, fix test_script_lines.
+
 Return ONLY a valid JSON object with:
 {
-  "solution_cpp": "/* Fixed, Flawless C++20 Code */",
+  "solution_cpp": "/* Fixed C++20 code, or null if untouched */",
+  "generator_cpp": "/* Fixed generator code, or null if untouched */",
+  "test_script_lines": ["/* Fixed script lines, or null if untouched */"],
   "explanation": "Brief explanation of what was fixed"
 }
 """
 
 PARSE_IMAGE_PROMPT = """You are an International Grandmaster Competitive Programmer and Polygon Problem Setter.
-Analyze the provided image of a competitive programming problem (statement, math formulas, constraints, input/output, sample tests).
+Analyze the provided image of a competitive programming problem (statement, math formulas, constraints, input/output, sample tests, subtasks).
 Extract and structure all information into a flawless Codeforces/Polygon LaTeX format.
 
 Rules:
 1. Translate fully to English if the original image is in another language (Vietnamese, Russian, etc.).
 2. Math & Formulas: Enclose all inline math in $...$ (e.g. $n$, $1 \\le n \\le 10^5$, $\\sum a_i$).
 3. Notes: Format using \\begin{itemize} \\item ... \\end{itemize}.
-4. Tutorial: Write a complete Editorial/Tutorial explaining the optimal algorithm and complexity \\mathcal{O}(\\dots).
+4. Subtasks: Identify or intelligently divide into 3 subtasks (30% small, 30% medium, 40% full constraints).
+5. Tutorial: Write a complete Editorial/Tutorial explaining the optimal algorithm and complexity \\mathcal{O}(\\dots).
 
 Return ONLY a valid JSON object with the following schema:
 {
@@ -204,9 +270,29 @@ Return ONLY a valid JSON object with the following schema:
   "input_format": "Detailed input format specification...",
   "output_format": "Detailed output format specification...",
   "constraints": "Summary of all variable constraints...",
-  "notes": "\\begin{itemize}\\n    \\item Note 1...\\n\\end{itemize}",
+  "notes": "\\begin{itemize}\\n    \\item Note 1...\\n\\end{itemize}\\n\\n\\textbf{Subtasks:}\\n\\begin{itemize}\\n    \\item Subtask 1 (30 points): $n \\le 100$.\\n    \\item Subtask 2 (30 points): $n \\le 2000$.\\n    \\item Subtask 3 (40 points): No additional constraints.\\n\\end{itemize}",
   "tutorial": "### Method Explanation\\n\\n...\\n\\n### Complexity\\n- Time: $\\mathcal{O}(n)$",
   "checker_type": "std::wcmp.cpp",
+  "subtasks": [
+    {
+      "subtask_id": 1,
+      "points": 30.0,
+      "description": "$n \\le 100$",
+      "generator_args_hint": "small"
+    },
+    {
+      "subtask_id": 2,
+      "points": 30.0,
+      "description": "$n \\le 2000$",
+      "generator_args_hint": "medium"
+    },
+    {
+      "subtask_id": 3,
+      "points": 40.0,
+      "description": "No additional constraints",
+      "generator_args_hint": "max"
+    }
+  ],
   "sample_tests": [
     {
       "input_text": "3\\n1 2 3\\n",

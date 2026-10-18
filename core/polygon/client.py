@@ -20,7 +20,7 @@ class PolygonClient:
         api_key: str,
         api_secret: str,
         api_url: str = "https://polygon.codeforces.com/api/",
-        timeout: int = 45,
+        timeout: int = 60,
     ):
         self.api_key = api_key
         self.api_secret = api_secret
@@ -95,12 +95,18 @@ class PolygonClient:
                         err_msg = response.text
                     raise PolygonAPIError(f"HTTP {response.status_code}: {err_msg}")
                 
-                res_data = response.json()
+                try:
+                    res_data = response.json()
+                except Exception:
+                    # Some endpoints (e.g. problem.script) return text/plain directly
+                    return response.text
+
                 if res_data.get("status") != "OK":
                     comment = res_data.get("comment", "Unknown Polygon error")
                     raise PolygonAPIError(f"Polygon API error in {method_name}: {comment}")
                 
                 return res_data.get("result")
+
             
             except (requests.RequestException, PolygonAPIError) as e:
                 last_error = e

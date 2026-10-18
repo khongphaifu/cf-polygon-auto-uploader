@@ -11,7 +11,9 @@ ai:
   model_name: "gemini-3.1-pro-preview"
 
 generation:
-  num_tests: 20
+  num_tests: 30
+  enable_subtasks: true
+  default_subtask_split: "30:30:40"
   include_samples_in_statements: true
   default_time_limit_ms: 1000
   default_memory_limit_mb: 256

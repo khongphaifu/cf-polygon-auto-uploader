@@ -24,7 +24,9 @@ class AIConfig:
 
 @dataclass
 class GenerationConfig:
-    num_tests: int = 20
+    num_tests: int = 30
+    enable_subtasks: bool = True
+    default_subtask_split: str = "30:30:40"
     include_samples_in_statements: bool = True
     default_time_limit_ms: int = 1000
     default_memory_limit_mb: int = 256
