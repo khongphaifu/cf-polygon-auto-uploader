@@ -49,7 +49,7 @@ class PolygonClient:
         method_name: str,
         params: Optional[Dict[str, Any]] = None,
         files: Optional[Dict[str, Any]] = None,
-        max_retries: int = 7,
+        max_retries: int = 3,
         timeout: Optional[int] = None,
     ) -> Any:
         """
@@ -83,16 +83,16 @@ class PolygonClient:
                     )
                 
                 if response.status_code == 429:
-                    # Polygon / Cloudflare Rate Limit -> sleep longer and retry
+                    # Polygon / Cloudflare Rate Limit -> sleep and retry
                     last_error = PolygonAPIError(f"HTTP 429 Too Many Requests on {method_name}")
-                    sleep_time = min(4 * attempt + random.uniform(1, 2), 35)
+                    sleep_time = min(3 * attempt + random.uniform(1, 2), 15)
                     time.sleep(sleep_time)
                     continue
 
                 if response.status_code in [500, 502, 503, 504, 520, 521, 522, 523, 524]:
                     # Temporary Cloudflare / Polygon server gateway error -> backoff and retry
                     last_error = PolygonAPIError(f"HTTP {response.status_code} Bad Gateway/Server Glitch on {method_name}")
-                    sleep_time = min(3 * attempt + random.uniform(1, 3), 30)
+                    sleep_time = min(2 * attempt + random.uniform(1, 2), 10)
                     time.sleep(sleep_time)
                     continue
                 
@@ -120,13 +120,14 @@ class PolygonClient:
                 
                 return res_data.get("result")
 
-            
+            except PolygonAPIError:
+                # Do not retry business logic errors or explicit Polygon rejections
+                raise
+
             except requests.exceptions.ReadTimeout as e:
                 last_error = e
                 if attempt < max_retries:
-                    # Double the timeout for the next retry attempt
-                    current_timeout = min(current_timeout * 2, 300)
-                    sleep_time = min(2 ** attempt + random.uniform(1, 2), 30)
+                    sleep_time = min(2 * attempt + random.uniform(1, 2), 10)
                     time.sleep(sleep_time)
                 else:
                     raise PolygonAPIError(f"Failed calling {method_name} after {max_retries} attempts: Read timed out")
@@ -134,15 +135,15 @@ class PolygonClient:
             except requests.exceptions.ConnectionError as e:
                 last_error = e
                 if attempt < max_retries:
-                    sleep_time = min(3 * attempt + random.uniform(1, 2), 30)
+                    sleep_time = min(2 * attempt + random.uniform(1, 2), 10)
                     time.sleep(sleep_time)
                 else:
                     raise PolygonAPIError(f"Failed calling {method_name} after {max_retries} attempts: Connection error ({e})")
 
-            except (requests.RequestException, PolygonAPIError) as e:
+            except requests.RequestException as e:
                 last_error = e
                 if attempt < max_retries:
-                    sleep_time = min(2 ** attempt + random.uniform(1, 2), 30)
+                    sleep_time = min(2 * attempt + random.uniform(1, 2), 10)
                     time.sleep(sleep_time)
                 else:
                     raise PolygonAPIError(f"Failed calling {method_name} after {max_retries} attempts: {last_error}")

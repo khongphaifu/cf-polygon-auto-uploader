@@ -202,11 +202,13 @@ class AIPipeline:
         if chk_cpp:
             chk_cpp = self._sanitize_cpp_code(chk_cpp, is_testlib=True)
 
+        chk_type = code_result.get("checker_type") or problem.checker_type or "std::wcmp.cpp"
+
         gen_code = GeneratedCode(
             solution_cpp=sol_cpp,
             validator_cpp="",
             generator_cpp=gen_cpp,
-            checker_type=checker_type,
+            checker_type=chk_type,
             custom_checker_cpp=chk_cpp,
             tests=[],
             test_script_lines=raw_script,

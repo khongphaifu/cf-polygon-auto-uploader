@@ -83,16 +83,17 @@ class PolygonAutomation:
             self.client.set_checker(problem_id=problem_id, checker_name=checker)
 
     # Step 4: Add file sinh test (gen.cpp)
-    def setup_generator(self, problem_id: int, code: GeneratedCode) -> bool:
+    def setup_generator(self, problem_id: int, code: GeneratedCode, overwrite: bool = False) -> bool:
         """Upload gen.cpp generator source file to Polygon."""
-        # Check if gen.cpp already exists on Polygon
-        try:
-            files = self.client.list_files(problem_id)
-            for f in files.get("sourceFiles", []):
-                if f.get("name") == "gen.cpp":
-                    return True
-        except Exception:
-            pass
+        # Check if gen.cpp already exists on Polygon (skip if not overwrite)
+        if not overwrite:
+            try:
+                files = self.client.list_files(problem_id)
+                for f in files.get("sourceFiles", []):
+                    if f.get("name") == "gen.cpp":
+                        return True
+            except Exception:
+                pass
 
         if code.generator_cpp and code.generator_cpp.strip():
             try:
@@ -117,15 +118,16 @@ class PolygonAutomation:
         return False
 
     # Step 5: Add file solution (solution.cpp tag MA)
-    def setup_solution(self, problem_id: int, code: GeneratedCode) -> bool:
+    def setup_solution(self, problem_id: int, code: GeneratedCode, overwrite: bool = False) -> bool:
         """Upload solution.cpp as Main Correct Solution (MA)."""
-        # Check if solution.cpp already exists on Polygon
-        try:
-            sols = self.client.list_solutions(problem_id)
-            if any(s.get("name") == "solution.cpp" for s in sols):
-                return True
-        except Exception:
-            pass
+        # Check if solution.cpp already exists on Polygon (skip if not overwrite)
+        if not overwrite:
+            try:
+                sols = self.client.list_solutions(problem_id)
+                if any(s.get("name") == "solution.cpp" for s in sols):
+                    return True
+            except Exception:
+                pass
 
         if code.solution_cpp and code.solution_cpp.strip():
             try:
@@ -150,15 +152,16 @@ class PolygonAutomation:
 
 
     # Step 6: Ghi script sinh test & Tests chia theo subtask
-    def setup_test_script_and_tests(self, problem_id: int, problem: ProblemData, code: GeneratedCode) -> None:
+    def setup_test_script_and_tests(self, problem_id: int, problem: ProblemData, code: GeneratedCode, overwrite: bool = False) -> None:
         """Save sample tests and test generation script partitioned by subtasks."""
-        # Check if tests already exist on Polygon
-        try:
-            existing = self.client.list_tests(problem_id=problem_id)
-            if existing and len(existing) >= max(len(code.tests), len(problem.sample_tests)):
-                return
-        except Exception:
-            pass
+        # Check if tests already exist on Polygon (skip if not overwrite)
+        if not overwrite:
+            try:
+                existing = self.client.list_tests(problem_id=problem_id)
+                if existing and len(existing) >= max(len(code.tests), len(problem.sample_tests)):
+                    return
+            except Exception:
+                pass
 
         uploaded_inputs = set()
         current_test_idx = 1
@@ -306,9 +309,9 @@ class PolygonAutomation:
                         code = verifier.verify_and_clean(problem, code, target_num_tests=len(code.tests) or 30)
 
                         # Re-upload fixed files
-                        self.setup_generator(problem_id, code)
-                        self.setup_solution(problem_id, code)
-                        self.setup_test_script_and_tests(problem_id, problem, code)
+                        self.setup_generator(problem_id, code, overwrite=True)
+                        self.setup_solution(problem_id, code, overwrite=True)
+                        self.setup_test_script_and_tests(problem_id, problem, code, overwrite=True)
                         continue
                     except Exception:
                         pass

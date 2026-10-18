@@ -394,7 +394,7 @@ def run_pipeline_background(url: str, num_tests: int = 30):
             add_dashboard_log("Bước 8/10: Yêu cầu Polygon build Full Package & verify (kèm Auto-Repair)...", step="8/10 Build Package", progress=85)
             pkg_res = polygon_auto.build_and_wait_package(
                 problem_id,
-                timeout_sec=60,
+                timeout_sec=90,
                 poll_interval=4,
                 problem=problem_data,
                 code=gen_code,
