@@ -1,5 +1,5 @@
 @echo off
-title Codeforces & Polygon Auto Uploader
+title Codeforces ^& Polygon Auto Uploader
 cd /d "%~dp0"
 
 set PYTHON_EXE=python
@@ -10,7 +10,7 @@ if exist ".\.venv\bin\python.exe" (
 )
 
 echo =======================================================
-echo    CODEFORCES & POLYGON AUTO UPLOADER SUITE
+echo    CODEFORCES ^& POLYGON AUTO UPLOADER SUITE
 echo =======================================================
 echo.
 echo  [1] Mo Giao dien Web Dashboard (Trinh duyet http://127.0.0.1:8080)
@@ -27,7 +27,7 @@ if "%opt%"=="1" (
 ) else if "%opt%"=="2" (
     %PYTHON_EXE% run.py
 ) else if "%opt%"=="3" (
-    %PYTHON_EXE% run.py --file urls.txt
+    %PYTHON_EXE% run.py --batch urls.txt
 ) else (
     exit /b 0
 )

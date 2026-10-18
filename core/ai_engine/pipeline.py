@@ -206,7 +206,7 @@ class AIPipeline:
             solution_cpp=sol_cpp,
             validator_cpp="",
             generator_cpp=gen_cpp,
-            checker_type=code_result.get("checker_type", problem.checker_type or "std::wcmp.cpp"),
+            checker_type=checker_type,
             custom_checker_cpp=chk_cpp,
             tests=[],
             test_script_lines=raw_script,

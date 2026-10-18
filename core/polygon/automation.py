@@ -71,7 +71,15 @@ class PolygonAutomation:
             )
             self.client.set_checker(problem_id=problem_id, checker_name="check.cpp")
         else:
-            checker = code.checker_type if code.checker_type.startswith("std::") else f"std::{code.checker_type}"
+            checker = code.checker_type or "std::lcmp.cpp"
+            # Normalize checker - replace yesno with lcmp.cpp to avoid multi-test presentation errors
+            if "yesno" in checker.lower():
+                checker = "std::lcmp.cpp"
+            elif not checker.startswith("std::"):
+                if not checker.endswith(".cpp"):
+                    checker = f"std::{checker}.cpp"
+                else:
+                    checker = f"std::{checker}"
             self.client.set_checker(problem_id=problem_id, checker_name=checker)
 
     # Step 4: Add file sinh test (gen.cpp)
