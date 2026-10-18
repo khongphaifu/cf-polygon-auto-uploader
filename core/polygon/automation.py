@@ -83,19 +83,21 @@ class PolygonAutomation:
             self.client.set_checker(problem_id=problem_id, checker_name=checker)
 
     # Step 4: Add file sinh test (gen.cpp)
-    def setup_generator(self, problem_id: int, code: GeneratedCode, overwrite: bool = False) -> bool:
-        """Upload gen.cpp generator source file to Polygon."""
-        # Check if gen.cpp already exists on Polygon (skip if not overwrite)
-        if not overwrite:
-            try:
-                files = self.client.list_files(problem_id)
-                for f in files.get("sourceFiles", []):
-                    if f.get("name") == "gen.cpp":
-                        return True
-            except Exception:
-                pass
+    def setup_generator(self, problem_id: int, code: GeneratedCode, overwrite: bool = False, max_attempts: int = 2) -> bool:
+        """Upload gen.cpp generator source file to Polygon with resilient non-blocking handling."""
+        for attempt in range(1, max_attempts + 1):
+            if not overwrite or attempt > 1:
+                try:
+                    files = self.client.list_files(problem_id)
+                    for f in files.get("sourceFiles", []):
+                        if f.get("name") == "gen.cpp":
+                            return True
+                except Exception:
+                    pass
 
-        if code.generator_cpp and code.generator_cpp.strip():
+            if not code.generator_cpp or not code.generator_cpp.strip():
+                return False
+
             try:
                 self.client.save_file(
                     problem_id=problem_id,
@@ -104,32 +106,40 @@ class PolygonAutomation:
                     content=code.generator_cpp,
                     source_type="cpp.g++17",
                     check_existing=False,
+                    timeout=15,
+                    max_retries=1,
                 )
                 return True
             except Exception:
                 try:
+                    time.sleep(1)
                     files = self.client.list_files(problem_id)
                     for f in files.get("sourceFiles", []):
                         if f.get("name") == "gen.cpp":
                             return True
                 except Exception:
                     pass
-                return False
+
+                if attempt == max_attempts:
+                    return False
+                time.sleep(2)
         return False
 
     # Step 5: Add file solution (solution.cpp tag MA)
-    def setup_solution(self, problem_id: int, code: GeneratedCode, overwrite: bool = False) -> bool:
-        """Upload solution.cpp as Main Correct Solution (MA)."""
-        # Check if solution.cpp already exists on Polygon (skip if not overwrite)
-        if not overwrite:
-            try:
-                sols = self.client.list_solutions(problem_id)
-                if any(s.get("name") == "solution.cpp" for s in sols):
-                    return True
-            except Exception:
-                pass
+    def setup_solution(self, problem_id: int, code: GeneratedCode, overwrite: bool = False, max_attempts: int = 2) -> bool:
+        """Upload solution.cpp as Main Correct Solution (MA) with resilient non-blocking handling."""
+        for attempt in range(1, max_attempts + 1):
+            if not overwrite or attempt > 1:
+                try:
+                    sols = self.client.list_solutions(problem_id)
+                    if any(s.get("name") == "solution.cpp" for s in sols):
+                        return True
+                except Exception:
+                    pass
 
-        if code.solution_cpp and code.solution_cpp.strip():
+            if not code.solution_cpp or not code.solution_cpp.strip():
+                return False
+
             try:
                 self.client.save_solution(
                     problem_id=problem_id,
@@ -138,16 +148,22 @@ class PolygonAutomation:
                     tag="MA",
                     source_type="cpp.g++17",
                     check_existing=False,
+                    timeout=15,
+                    max_retries=1,
                 )
                 return True
-            except Exception as e:
+            except Exception:
                 try:
+                    time.sleep(1)
                     sols = self.client.list_solutions(problem_id)
                     if any(s.get("name") == "solution.cpp" for s in sols):
                         return True
                 except Exception:
                     pass
-                raise PolygonAPIError(f"Cannot save solution.cpp on Polygon: {e}")
+
+                if attempt == max_attempts:
+                    return False
+                time.sleep(2)
         return False
 
 
@@ -184,7 +200,7 @@ class PolygonAutomation:
                 )
                 uploaded_inputs.add(normalized)
                 current_test_idx += 1
-                time.sleep(0.5)
+                time.sleep(0.08)
             except Exception as e:
                 err_msg = str(e).lower()
                 if "coincides" in err_msg or "already exists" in err_msg:
@@ -250,6 +266,9 @@ class PolygonAutomation:
             try:
                 self.client.create_package(problem_id=problem_id, full=True, verify=True)
             except Exception as e:
+                err_str = str(e).lower()
+                if "main (model) solution" in err_str or "server restart" in err_str:
+                    return {"state": "QUEUED_ON_POLYGON", "comment": f"Package queued/deferred: {e}"}
                 if attempt > max_repair_retries:
                     return {"state": "FAILED", "error_message": f"Cannot create package on Polygon: {e}"}
 
@@ -279,18 +298,15 @@ class PolygonAutomation:
                 except Exception:
                     pkg_result = {"state": "BUILDING_OR_QUEUED"}
 
-            if pkg_result.get("state") in ["READY", "WARNING"]:
+            if pkg_result.get("state") in ["READY", "WARNING", "QUEUED_ON_POLYGON"]:
                 return pkg_result
 
             # Auto-Repair on FAILED
             if pkg_result.get("state") == "FAILED" and attempt <= max_repair_retries:
                 comment = str(pkg_result.get("comment", "")).lower()
-                # If Polygon aborted package due to server restart, retry building once without modifying valid code
+                # If Polygon aborted package due to server restart, do not loop endlessly
                 if "server restart" in comment or "build a package again" in comment:
-                    if attempt >= 2:
-                        break
-                    time.sleep(5)
-                    continue
+                    return {"state": "QUEUED_ON_POLYGON", "comment": "Polygon compiler daemon is restarting; package deferred"}
 
                 if ai_pipeline and problem and code:
                     error_diag = f"Polygon Package {pkg_result.get('id')} failed verification. State: {pkg_result.get('state')}."

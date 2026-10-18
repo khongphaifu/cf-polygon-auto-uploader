@@ -92,9 +92,12 @@ class PolygonClient:
                 if response.status_code in [500, 502, 503, 504, 520, 521, 522, 523, 524]:
                     # Temporary Cloudflare / Polygon server gateway error -> backoff and retry
                     last_error = PolygonAPIError(f"HTTP {response.status_code} Bad Gateway/Server Glitch on {method_name}")
-                    sleep_time = min(2 * attempt + random.uniform(1, 2), 10)
-                    time.sleep(sleep_time)
-                    continue
+                    if attempt < max_retries:
+                        sleep_time = min(3 * attempt + random.uniform(1, 2), 10)
+                        time.sleep(sleep_time)
+                        continue
+                    else:
+                        raise last_error
                 
                 if response.status_code != 200:
                     try:
@@ -147,6 +150,10 @@ class PolygonClient:
                     time.sleep(sleep_time)
                 else:
                     raise PolygonAPIError(f"Failed calling {method_name} after {max_retries} attempts: {last_error}")
+
+        if last_error:
+            raise PolygonAPIError(f"Failed calling {method_name} after {max_retries} attempts: {last_error}")
+        raise PolygonAPIError(f"Failed calling {method_name} after {max_retries} attempts: Request failed without response")
 
 
     # ==================== Problem Management ====================
@@ -227,9 +234,9 @@ class PolygonClient:
         file_type: str,  # "source" or "resource"
         name: str,
         content: Union[str, bytes],
-        source_type: Optional[str] = "cpp.g++17",
+        source_type: Optional[str] = None,
         check_existing: bool = False,
-        timeout: int = 45,
+        timeout: int = 25,
         max_retries: int = 2,
     ) -> None:
         """Save a source or resource file."""
@@ -287,9 +294,9 @@ class PolygonClient:
         name: str,
         content: str,
         tag: str = "MA",  # MA = Main correct solution, OK = Correct
-        source_type: Optional[str] = "cpp.g++17",
+        source_type: Optional[str] = None,
         check_existing: bool = False,
-        timeout: int = 45,
+        timeout: int = 25,
         max_retries: int = 2,
     ) -> None:
         """Save solution file with tag (MA, OK, WA, TL, ML, RE, etc.)."""

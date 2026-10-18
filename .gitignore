@@ -29,3 +29,9 @@ Thumbs.db
 
 # Sensitive API keys
 config/config.yaml
+
+# Local problem cache & debug files
+cache/
+hooks/
+test_*.py
+capture_*.py
