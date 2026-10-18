@@ -179,6 +179,16 @@ class PolygonAutomation:
             except Exception:
                 pass
 
+        # 0. Enable test groups and points on Polygon for subtask grading
+        try:
+            self.client.enable_groups(problem_id=problem_id, testset="tests", enable=True)
+        except Exception:
+            pass
+        try:
+            self.client.enable_points(problem_id=problem_id, testset="tests", enable=True)
+        except Exception:
+            pass
+
         uploaded_inputs = set()
         current_test_idx = 1
 
@@ -205,32 +215,59 @@ class PolygonAutomation:
                 err_msg = str(e).lower()
                 if "coincides" in err_msg or "already exists" in err_msg:
                     uploaded_inputs.add(normalized)
-                    current_test_idx += 1
+                    # Do not increment current_test_idx since Polygon did not save this duplicate
+                elif "not enabled" in err_msg or "testgroup" in err_msg or "testpoints" in err_msg:
+                    try:
+                        self.client.save_test(
+                            problem_id=problem_id,
+                            test_index=current_test_idx,
+                            test_input=test_input,
+                            test_description=description,
+                            use_in_statements=use_in_statements,
+                            check_existing=False,
+                        )
+                        uploaded_inputs.add(normalized)
+                        current_test_idx += 1
+                        time.sleep(0.08)
+                    except Exception:
+                        pass
 
         # 1. Upload sample tests first
         for s_idx, sample in enumerate(problem.sample_tests, start=1):
             _save_test_safe(sample.input_text, f"Sample Test {s_idx}", True, group="samples", points=0.0)
 
-        # 2. Save Script to Polygon (Tab Tests -> Script)
-        script_saved = False
+        # 2. Always upload ALL generated tests partitioned by subtasks directly to Polygon
+        for gen_test in code.tests:
+            _save_test_safe(
+                gen_test.input_data,
+                gen_test.description or f"Test {gen_test.test_index}",
+                False,
+                group=gen_test.group or (str(gen_test.subtask_id) if gen_test.subtask_id else None),
+                points=gen_test.points,
+            )
+
+        # 3. Clean up any leftover tests beyond total uploaded
+        try:
+            total_saved = current_test_idx - 1
+            existing_after = self.client.list_tests(problem_id=problem_id)
+            if existing_after and len(existing_after) > total_saved:
+                for t in reversed(existing_after):
+                    t_idx = t.get("index")
+                    if t_idx and t_idx > total_saved:
+                        try:
+                            self.client.delete_test(problem_id=problem_id, test_index=t_idx, testset="tests")
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+
+        # 4. Save Script to Polygon (Tab Tests -> Script) for record/reproduction
         if code.test_script_lines and code.generator_cpp:
             script_content = "\n".join(code.test_script_lines)
             try:
                 self.client.save_script(problem_id=problem_id, script_content=script_content, testset="tests")
-                script_saved = True
             except Exception:
-                script_saved = False
-
-        # 3. If script could not be saved or generator not present, upload static tests as fallback
-        if not script_saved:
-            for gen_test in code.tests:
-                _save_test_safe(
-                    gen_test.input_data,
-                    gen_test.description or f"Test {gen_test.test_index}",
-                    False,
-                    group=gen_test.group or (str(gen_test.subtask_id) if gen_test.subtask_id else None),
-                    points=gen_test.points,
-                )
+                pass
 
     # Step 7: Commit changes
     def commit_changes(self, problem_id: int, message: str = "Auto-commit before packaging") -> Dict[str, Any]:
@@ -267,9 +304,20 @@ class PolygonAutomation:
                 self.client.create_package(problem_id=problem_id, full=True, verify=True)
             except Exception as e:
                 err_str = str(e).lower()
+                if "commit the changes" in err_str:
+                    time.sleep(1)
+                    self.commit_changes(problem_id=problem_id, message="Retry commit before packaging")
+                    time.sleep(1)
+                    try:
+                        self.client.create_package(problem_id=problem_id, full=True, verify=True)
+                        err_str = ""
+                    except Exception as e2:
+                        e = e2
+                        err_str = str(e).lower()
+
                 if "main (model) solution" in err_str or "server restart" in err_str:
                     return {"state": "QUEUED_ON_POLYGON", "comment": f"Package queued/deferred: {e}"}
-                if attempt > max_repair_retries:
+                if attempt > max_repair_retries and err_str:
                     return {"state": "FAILED", "error_message": f"Cannot create package on Polygon: {e}"}
 
             start_time = time.time()
@@ -366,22 +414,14 @@ class PolygonAutomation:
         """Grant write and read access to 'codeforces' user and by tag."""
         success = False
         try:
-            self.client.request("problem.giveAccess", {
-                "problemId": problem_id,
-                "login": "codeforces",
-                "type": "Write",
-            })
+            self.client.set_access(problem_id=problem_id, login="codeforces", access_type="WRITE")
             success = True
         except Exception:
             pass
 
         if not success:
             try:
-                self.client.request("problem.giveAccess", {
-                    "problemId": problem_id,
-                    "login": "codeforces",
-                    "type": "Read",
-                })
+                self.client.set_access(problem_id=problem_id, login="codeforces", access_type="READ")
                 success = True
             except Exception:
                 pass

@@ -1,8 +1,18 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import Optional
 import requests
 from bs4 import BeautifulSoup
 from core.models import ProblemData
+
+
+@dataclass
+class ScrapedProblem:
+    """Holds extracted problem text and optional document binary (e.g. PDF)."""
+    raw_text: str
+    pdf_bytes: Optional[bytes] = None
+    pdf_url: Optional[str] = None
+    title: Optional[str] = None
 
 
 class BaseScraper(ABC):
@@ -35,6 +45,11 @@ class BaseScraper(ABC):
                 last_err = e
                 time.sleep(1.5 * attempt)
         raise last_err
+
+    def scrape(self, url: str) -> ScrapedProblem:
+        """Extract problem statement text or document from URL."""
+        raw_text = self.scrape_raw(url)
+        return ScrapedProblem(raw_text=raw_text)
 
     @abstractmethod
     def can_handle(self, url: str) -> bool:

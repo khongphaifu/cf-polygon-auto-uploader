@@ -1,5 +1,5 @@
 from typing import List
-from core.scraper.base import BaseScraper
+from core.scraper.base import BaseScraper, ScrapedProblem
 from core.scraper.leetcode import LeetCodeScraper
 from core.scraper.atcoder import AtCoderScraper
 from core.scraper.codeforces import CodeforcesScraper
@@ -19,9 +19,14 @@ ALL_SCRAPERS: List[BaseScraper] = [
 ]
 
 
-def scrape_problem_text(url: str) -> str:
-    """Find appropriate scraper and extract raw problem text."""
+def scrape_problem_data(url: str) -> ScrapedProblem:
+    """Find appropriate scraper and extract problem data (text or document)."""
     for scraper in ALL_SCRAPERS:
         if scraper.can_handle(url):
-            return scraper.scrape_raw(url)
-    return GenericScraper().scrape_raw(url)
+            return scraper.scrape(url)
+    return GenericScraper().scrape(url)
+
+
+def scrape_problem_text(url: str) -> str:
+    """Find appropriate scraper and extract raw problem text."""
+    return scrape_problem_data(url).raw_text

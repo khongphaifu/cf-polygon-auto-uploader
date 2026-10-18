@@ -22,7 +22,7 @@ from rich.prompt import Prompt, Confirm
 
 from config.settings import load_config, AppConfig
 from core.models import ProblemData, GeneratedCode, PolygonProblemRecord, SubtaskData
-from core.scraper import scrape_problem_text
+from core.scraper import scrape_problem_text, scrape_problem_data
 from core.ai_engine.llm_client import LLMClient
 from core.ai_engine.pipeline import AIPipeline
 from core.polygon.client import PolygonClient, PolygonAPIError
@@ -116,10 +116,13 @@ class AutoUploaderCLI:
             if not problem_data:
                 # ==================== BƯỚC 1: ĐỌC LINK & PHÂN TÍCH ĐỀ BÀI + SUBTASKS ====================
                 with console.status("[bold yellow]Bước 1/10: Đang cào dữ liệu và phân tích Subtasks...[/bold yellow]"):
-                    raw_text = scrape_problem_text(url)
-                    if not raw_text or len(raw_text.strip()) < 30:
+                    scraped = scrape_problem_data(url)
+                    raw_text = scraped.raw_text
+                    if not scraped.pdf_bytes and (not raw_text or len(raw_text.strip()) < 30):
                         raise ValueError("Không thể lấy nội dung đề bài từ đường link.")
-                    problem_data = self.ai_pipeline.parse_problem_content(url, raw_text)
+                    if scraped.pdf_bytes:
+                        console.print(f"  [bold cyan]📄 Đã phát hiện tài liệu PDF ({len(scraped.pdf_bytes)} bytes): {scraped.pdf_url}[/bold cyan]")
+                    problem_data = self.ai_pipeline.parse_problem_content(url, raw_text, pdf_bytes=scraped.pdf_bytes)
 
             console.print(f"  [green]✓[/green] [bold white]{problem_data.title}[/bold white] (Short Name: [cyan]{problem_data.short_name}[/cyan])")
             console.print(f"  [dim]Giới hạn: {problem_data.time_limit_ms}ms | {problem_data.memory_limit_mb}MB | Samples: {len(problem_data.sample_tests)}[/dim]")

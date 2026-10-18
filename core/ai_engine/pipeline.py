@@ -101,8 +101,16 @@ class AIPipeline:
             raw_html=raw_content,
         )
 
-    def parse_problem_content(self, source_url: str, raw_content: str) -> ProblemData:
-        """Parse raw crawled content into structured ProblemData with subtasks."""
+    def parse_problem_content(self, source_url: str, raw_content: str, pdf_bytes: Optional[bytes] = None) -> ProblemData:
+        """Parse raw crawled content or PDF binary into structured ProblemData with subtasks."""
+        if pdf_bytes:
+            parsed_json = self.llm.generate_from_image(
+                prompt=PARSE_IMAGE_PROMPT,
+                image_bytes=pdf_bytes,
+                mime_type="application/pdf",
+            )
+            return self._build_problem_data_from_json(source_url, parsed_json, raw_content=f"[PDF Document: {len(pdf_bytes)} bytes]")
+
         prompt = PARSE_PROBLEM_PROMPT.replace("{raw_content}", raw_content[:25000])
         parsed_json = self.llm.generate_json(prompt)
         return self._build_problem_data_from_json(source_url, parsed_json, raw_content)

@@ -320,7 +320,7 @@ class PolygonClient:
         return result if result else []
 
     def clear_all_tests(self, problem_id: int, testset: str = "tests") -> None:
-        """Remove all existing tests by overwriting testset script with empty, then removing tests one by one."""
+        """Remove all existing tests by deleting tests one by one from last to first."""
         try:
             existing = self.list_tests(problem_id=problem_id, testset=testset)
             # Delete from last to first to avoid reindexing issues
@@ -328,15 +328,19 @@ class PolygonClient:
                 idx = test.get("index")
                 if idx is not None:
                     try:
-                        self.request("problem.removeTest", {
-                            "problemId": problem_id,
-                            "testset": testset,
-                            "testIndex": idx,
-                        })
+                        self.delete_test(problem_id=problem_id, test_index=idx, testset=testset)
                     except Exception:
                         pass
         except Exception:
             pass
+
+    def delete_test(self, problem_id: int, test_index: int, testset: str = "tests") -> None:
+        """Delete a single test by index."""
+        self.request("problem.deleteTest", {
+            "problemId": problem_id,
+            "testset": testset,
+            "testIndex": test_index,
+        })
 
     def save_test(
         self,
@@ -367,6 +371,22 @@ class PolygonClient:
             params["testDescription"] = test_description
 
         self.request("problem.saveTest", params, timeout=120)
+
+    def enable_groups(self, problem_id: int, testset: str = "tests", enable: bool = True) -> None:
+        """Enable or disable test groups for a testset."""
+        self.request("problem.enableGroups", {
+            "problemId": problem_id,
+            "testset": testset,
+            "enable": "true" if enable else "false",
+        })
+
+    def enable_points(self, problem_id: int, testset: str = "tests", enable: bool = True) -> None:
+        """Enable or disable test points for a testset."""
+        self.request("problem.enablePoints", {
+            "problemId": problem_id,
+            "testset": testset,
+            "enable": "true" if enable else "false",
+        })
 
     def get_script(self, problem_id: int, testset: str = "tests") -> Optional[str]:
         """Get test generator script."""
@@ -400,3 +420,17 @@ class PolygonClient:
             "full": "true" if full else "false",
             "verify": "true" if verify else "false",
         })
+
+    # ==================== Access Management ====================
+
+    def set_access(self, problem_id: int, login: str, access_type: str = "WRITE") -> None:
+        """Grant access to user on problem via problem.setAccess."""
+        self.request("problem.setAccess", {
+            "problemId": problem_id,
+            "login": login,
+            "accessType": access_type,
+        })
+
+    def list_accesses(self, problem_id: int) -> List[Dict[str, Any]]:
+        """List accesses for problem."""
+        return self.request("problem.accesses", {"problemId": problem_id})
