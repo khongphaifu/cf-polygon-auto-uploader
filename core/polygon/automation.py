@@ -285,9 +285,11 @@ class PolygonAutomation:
             # Auto-Repair on FAILED
             if pkg_result.get("state") == "FAILED" and attempt <= max_repair_retries:
                 comment = str(pkg_result.get("comment", "")).lower()
-                # If Polygon aborted package due to server restart, retry building without modifying valid code
+                # If Polygon aborted package due to server restart, retry building once without modifying valid code
                 if "server restart" in comment or "build a package again" in comment:
-                    time.sleep(8)
+                    if attempt >= 2:
+                        break
+                    time.sleep(5)
                     continue
 
                 if ai_pipeline and problem and code:

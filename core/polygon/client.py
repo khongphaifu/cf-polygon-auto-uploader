@@ -229,6 +229,8 @@ class PolygonClient:
         content: Union[str, bytes],
         source_type: Optional[str] = "cpp.g++17",
         check_existing: bool = False,
+        timeout: int = 45,
+        max_retries: int = 2,
     ) -> None:
         """Save a source or resource file."""
         if isinstance(content, bytes):
@@ -246,7 +248,7 @@ class PolygonClient:
         if file_type == "source" and source_type and name.endswith(".cpp"):
             params["sourceType"] = source_type
 
-        self.request("problem.saveFile", params=params, timeout=120)
+        self.request("problem.saveFile", params=params, timeout=timeout, max_retries=max_retries)
 
     # ==================== Checker & Validator ====================
 
@@ -287,6 +289,8 @@ class PolygonClient:
         tag: str = "MA",  # MA = Main correct solution, OK = Correct
         source_type: Optional[str] = "cpp.g++17",
         check_existing: bool = False,
+        timeout: int = 45,
+        max_retries: int = 2,
     ) -> None:
         """Save solution file with tag (MA, OK, WA, TL, ML, RE, etc.)."""
         params = {
@@ -299,7 +303,7 @@ class PolygonClient:
         if source_type and name.endswith(".cpp"):
             params["sourceType"] = source_type
 
-        self.request("problem.saveSolution", params=params, timeout=120)
+        self.request("problem.saveSolution", params=params, timeout=timeout, max_retries=max_retries)
 
     # ==================== Tests & Script ====================
 
