@@ -1,63 +1,73 @@
 # 🚀 Codeforces & Polygon Auto Uploader
 
-Hệ thống tự động hóa toàn diện quy trình lấy đề bài từ bất kỳ đường link nào (Codeforces, AtCoder, CSES, VNOJ, MarisaOJ,...), sử dụng AI Gemini để bóc tách đề bài, sinh lời giải chuẩn C++20 tối ưu, viết **generator C++ (`testlib.h`)** để sinh **20 test cases lớn (max constraints)** qua **Polygon FreeMarker Script**, tự động khởi tạo bài trên **Polygon Codeforces**, nạp code, build Full Package và xuất bảng tổng hợp ra **Excel (.xlsx)**.
+Hệ thống tự động hóa toàn diện quy trình lấy đề bài lập trình thi đấu (Competitive Programming) từ bất kỳ đường link nào (**Codeforces, AtCoder, CSES, VNOJ - kể cả đề PDF nhúng, MarisaOJ, LeetCode,...**), sử dụng AI Gemini để phân tích cấu trúc đề bài, sinh lời giải chuẩn **C++20 tối ưu**, viết **generator C++ (`testlib.h`)** phân chia **Subtasks & Điểm số**, kiểm định cục bộ 100% bằng MinGW GCC, tự động nạp lên **Polygon Codeforces**, build **Full Package** kèm cơ chế **Auto-Repair**, cấp quyền cho tài khoản `codeforces` và xuất kết quả ra file **Excel (`problems_summary.xlsx`)**.
 
 ---
 
-## 🌟 Tính Năng Chính
+## 🌟 Các Tính Năng Cốt Lõi & Cải Tiến
 
-1. **Bóc tách đề bài đa nguồn**:
-   - Hỗ trợ Codeforces, AtCoder, CSES, VNOJ, **MarisaOJ** (bypass Cloudflare với `cloudscraper`), và Generic Scraper thông minh cho mọi trang web khác.
-   - Tự động nhận diện và làm sạch tiếng Việt (Unicode UTF-8).
+### 1. Bóc tách đề bài đa nguồn thông minh (Hỗ trợ cả HTML & PDF)
+- **Đa nền tảng**: Hỗ trợ Codeforces, AtCoder, CSES, VNOJ, MarisaOJ (vượt Cloudflare với `cloudscraper`), LeetCode và Generic Scraper cho các trang web bất kỳ.
+- **Hỗ trợ đề bài dạng PDF trên VNOJ**: Tự động nhận diện các thẻ `<object data="...pdf">`, `<iframe>`, thẻ `<a>` chứa file PDF đề bài (ví dụ các bài Free Contest trên VNOJ), tự động tải binary PDF và truyền vào **Gemini Multimodal API (`application/pdf`)** để phân tích đề bài, giới hạn và test ví dụ chính xác tuyệt đối.
+- **Làm sạch Unicode & LaTeX**: Giữ nguyên công thức toán LaTeX chuẩn `$...$`, bảng biểu và dữ liệu tiếng Việt UTF-8.
 
-2. **AI Problem Engine (Google Gemini)**:
-   - Phân tích đề bài, nhận diện constraints chính xác.
-   - Viết lời giải chuẩn C++20 tối ưu, tránh tràn số (`long long`, `__int128`), fast I/O.
-   - Viết **`gen.cpp`** chuẩn `testlib.h` với **20 nhánh test phân tầng** (edge cases → stress → max constraints $N = 10^5, 2 \times 10^5, 10^6, 10^{18}$).
-   - Tự động chọn checker phù hợp, mặc định **`std::lcmp.cpp`** (Lines Comparer) để tránh lỗi `PRESENTATION_ERROR`.
+### 2. AI Problem Engine & Phân chia Subtasks tự động
+- **Phân bổ Subtasks & Điểm số**: Tự động chia các tầng dữ liệu theo điểm (mặc định tỉ lệ `30:30:40` hoặc đọc trực tiếp từ yêu cầu đề bài), sinh testcases tương ứng cho từng subtask ($N \le 10$, $N \le 20$, Max constraints $N = 10^5, 2 \times 10^5, 10^{18}$).
+- **Lời giải chuẩn C++20 tối ưu**: Tự động áp dụng Fast I/O, kiểu dữ liệu lớn (`long long`, `__int128`), thuật toán tối ưu (DP, Segment Tree, Math, Bitwise,...), tránh tràn số và TLE.
+- **Generator C++ (`gen.cpp`) với `testlib.h`**: Nhận tham số dòng lệnh theo subtask, seed ngẫu nhiên và kiểu test (min, max, random, stress, extreme, corner cases).
+- **Chuẩn hóa Checker**: Mặc định sử dụng **`std::wcmp.cpp`** hoặc **`std::lcmp.cpp`** để so khớp kết quả dòng/từ, không bị lỗi `PRESENTATION_ERROR` khi xử lý bài có nhiều test cases ($t$ queries).
 
-3. **Chiến lược sinh Test Cases thông minh**:
-   - Sinh **generator C++ (`gen.cpp`)** nhận tham số `int test = atoi(argv[1])` để Polygon tự sinh test lớn.
-   - Upload **Polygon FreeMarker Script**:
-     ```freemarker
-     <#list 1..20 as i>
-         gen ${i} > $
-     </#list>
-     ```
-   - Polygon tự động compile và chạy `gen.exe` để sinh test max constraints — **không bị giới hạn token LLM**.
-   - Verify cục bộ bằng `g++ -O2 -std=c++20` trước khi upload.
+### 3. Local Verification Engine (Kiểm định cục bộ trước khi Upload)
+- Tự động gọi trình biên dịch `g++ -O2 -std=c++20` để biên dịch `solution.cpp`.
+- Tự động gọi `g++ -O2 -std=c++17` cùng thư viện `testlib.h` để biên dịch `generator.cpp`.
+- Thực thi generator cục bộ để sinh toàn bộ test input cho từng subtask, sau đó chạy `solution.exe` sinh output chuẩn.
+- **Cam kết chất lượng**: Loại bỏ 100% test trùng lặp, đảm bảo 0 lỗi biên dịch, 0 runtime crash, 0 TLE trước khi đẩy lên Polygon.
 
-4. **Polygon Automation (Retry & Auto-Repair)**:
-   - Tự động tạo bài với short-name chuẩn.
-   - Nạp đề bài (LaTeX Markdown) định dạng chuẩn Polygon.
-   - Upload `gen.cpp` + `solution.cpp` + Polygon Script + sample tests.
-   - Retry tự động 7 lần với exponential backoff khi gặp lỗi 502/503/504/Cloudflare.
-   - Build Full Package + **Auto-Repair loop** khi package FAILED (AI tự fix `solution.cpp`).
-   - Phân quyền tag `codeforces` để sẵn sàng import vào Mashup/Gym.
+### 4. Quy trình tự động hóa 10 bước chuẩn Polygon (10-Step Automation Pipeline)
+Hệ thống tự động thực thi tuần tự 10 bước qua Polygon REST API:
+1. **Bước 1 (Get/Create Problem)**: Kiểm tra bài tập trên Polygon theo short-name; nếu chưa có thì tự động tạo mới.
+2. **Bước 2 (Statement & Limits)**: Cấu hình giới hạn thời gian (Time Limit ms), bộ nhớ (Memory Limit MB), nạp đề bài định dạng LaTeX Polygon kèm mô tả subtask.
+3. **Bước 3 (Checker)**: Thiết lập Checker chuẩn (`std::wcmp.cpp` / `std::lcmp.cpp`) hoặc nạp `check.cpp` tùy chỉnh.
+4. **Bước 4 (Generator Files)**: Nạp mã nguồn `gen.cpp` (C++17) và thư viện `testlib.h` vào mục Files của Polygon.
+5. **Bước 5 (Solution MA)**: Nạp lời giải `solution.cpp` với Tag `MA` (Main Correct Solution).
+6. **Bước 6 (Subtask Tests & Script)**:
+   - Tự động gọi `enableGroups` và `enablePoints` trên testset `tests`.
+   - Nạp toàn bộ testcases phân tầng trực tiếp vào Tab Tests với nhãn nhóm (`group`) và điểm số (`points`).
+   - Ghi Script sinh test vào Tab Tests -> Script để lưu trữ và tái lập.
+7. **Bước 7 (Commit Working Copy)**: Tự động commit các thay đổi trên Polygon trước khi đóng gói.
+8. **Bước 8 (Full Package & Auto-Repair)**: Kích hoạt build Full Package có xác minh (verification). Nếu gặp lỗi, kích hoạt vòng lặp **Auto-Repair** để AI phân tích lỗi và vá code tự động.
+9. **Bước 9 (Manage Access)**: Phân quyền `WRITE` cho người dùng `codeforces` qua API `problem.setAccess` để sẵn sàng import vào Codeforces Mashup / Gym.
+10. **Bước 10 (Export Link & Excel)**: Trả về link bài hoàn chỉnh (`cf_import_url`: `https://polygon.codeforces.com/p.../owner/short_name`) và tự động ghi vào `problems_summary.xlsx`.
 
-5. **Xuất Báo Cáo Excel**:
-   - Tự động ghi lại và cập nhật vào `problems_summary.xlsx` với hyperlink và màu sắc trạng thái.
+### 5. Multi-Key Rotation & Khả năng chịu lỗi cao
+- **Cơ chế xoay vòng Key Gemini**: Tự động chuyển sang danh sách `gemini_backup_keys` khi key chính chạm giới hạn quota hoặc rate-limit (HTTP 429).
+- **Polygon Resilient Client**: Tự động retry với exponential backoff khi Polygon API trả về mã lỗi 502/503/504 hoặc Cloudflare challenge.
+- **Cache cục bộ**: Lưu cache dữ liệu đề bài và code đã kiểm định trong thư mục `cache/`, giúp tiếp tục tiến trình ngay lập tức mà không cần gọi lại AI.
 
 ---
 
-## 🛠️ Hướng Dẫn Cài Đặt & Chạy
+## 🛠️ Hướng Dẫn Cài Đặt
 
-### 1. Cài đặt môi trường
-Yêu cầu Python 3.10+ và g++ (MinGW hoặc GCC).
+### 1. Yêu cầu hệ thống
+- **Python**: Phiên bản 3.10 trở lên.
+- **Trình biên dịch C++**: MinGW-w64 (Windows) hoặc GCC (Linux/macOS) hỗ trợ chuẩn C++20 và C++17 trên PATH (`g++ --version`).
+- **Thư viện testlib.h**: Đặt file [`testlib.h`](https://github.com/MikeMirzayanov/testlib/blob/master/testlib.h) tại thư mục gốc của dự án.
+
+### 2. Cài đặt môi trường ảo & Thư viện
 ```bash
+# Tạo môi trường ảo
 python -m venv .venv
 
-# Windows:
+# Kích hoạt môi trường và cài đặt dependencies
+# Trên Windows:
 .\.venv\Scripts\pip install -r requirements.txt
 
-# Linux/macOS:
+# Trên Linux/macOS:
 ./.venv/bin/pip install -r requirements.txt
 ```
 
-### 2. Đặt `testlib.h` vào thư mục gốc
-Tải [`testlib.h`](https://github.com/MikeMirzayanov/testlib/blob/master/testlib.h) và đặt tại `D:\cf-polygon-auto-uploader\testlib.h` để local verifier có thể compile `gen.cpp`.
-
 ### 3. Cấu hình API (`config/config.yaml`)
+Chỉnh sửa file `config/config.yaml` để khai báo API key của bạn:
 ```yaml
 polygon:
   api_key: "YOUR_POLYGON_API_KEY"
@@ -66,14 +76,19 @@ polygon:
 
 ai:
   provider: "gemini"
-  gemini_api_key: "YOUR_GEMINI_API_KEY"
+  gemini_api_key: "YOUR_PRIMARY_GEMINI_KEY"
   gemini_backup_keys:
+    # Danh sách key dự phòng tự động chuyển khi gặp giới hạn hạn ngạch
     # - "AIzaSy..."
   model_name: "gemini-3.6-flash"
 
 generation:
-  num_tests: 20
+  num_tests: 30
+  enable_subtasks: true
+  default_subtask_split: "30:30:40"
   include_samples_in_statements: true
+  default_time_limit_ms: 1000
+  default_memory_limit_mb: 256
   auto_grant_access_to_codeforces: true
   auto_package: true
 
@@ -83,82 +98,105 @@ export:
 
 ---
 
-## 💻 Cách Sử Dụng
+## 💻 Hướng Dẫn Sử Dụng
 
-### Chạy menu tương tác (Web Dashboard hoặc CLI)
+### 1. Chạy trực tiếp một bài tập bằng đường link
 ```bash
-# Windows:
+# Nạp bài từ VNOJ (hỗ trợ cả bài có đề PDF như fc020_accepted):
+.\.venv\Scripts\python.exe run.py -u "https://oj.vnoi.info/problem/fc020_accepted" -n 15
+
+# Nạp bài từ Codeforces:
+.\.venv\Scripts\python.exe run.py -u "https://codeforces.com/problemset/problem/1850/A" -n 20
+
+# Nạp bài từ AtCoder / CSES / MarisaOJ:
+.\.venv\Scripts\python.exe run.py -u "https://cses.fi/problemset/task/1068"
+```
+
+### 2. Menu tương tác CLI & Dashboard
+```bash
+# Khởi chạy menu điều khiển qua file batch:
 run.bat
 
-# Hoặc trực tiếp Python:
+# Hoặc khởi chạy qua Python CLI:
 .\.venv\Scripts\python.exe run.py
 ```
 
-### Chạy trực tiếp 1 đường link
+### 3. Xử lý hàng loạt từ file danh sách (`batch mode`)
+Tạo file `urls.txt` chứa mỗi dòng 1 link bài tập:
+```text
+https://codeforces.com/problemset/problem/4/A
+https://codeforces.com/problemset/problem/71/A
+https://oj.vnoi.info/problem/fc020_accepted
+```
+Chạy lệnh batch:
 ```bash
-.\.venv\Scripts\python.exe run.py --url "https://codeforces.com/problemset/problem/1/A"
+.\.venv\Scripts\python.exe run.py --batch urls.txt -n 20
 ```
 
-### Chạy hàng loạt từ file danh sách
-```bash
-.\.venv\Scripts\python.exe run.py --batch urls.txt
-```
-
-### Kiểm tra kết nối API Polygon & Gemini
+### 4. Kiểm tra kết nối API Polygon & Gemini
 ```bash
 .\.venv\Scripts\python.exe run.py --test
 ```
 
-### Xem danh sách bài trên Polygon và xuất ra file Excel
+### 5. Xuất danh sách bài tập hiện có trên Polygon ra Excel
 ```bash
 .\.venv\Scripts\python.exe run.py --list
 ```
 
 ---
 
-## 📂 Cấu Trúc Dự Án
+## 📂 Cấu Trúc Thư Mục Dự Án
 
 ```
 cf-polygon-auto-uploader/
 ├── config/
-│   └── config.yaml              # API keys & cấu hình
+│   ├── config.yaml              # Cấu hình API Keys, model AI và tham số sinh test
+│   └── settings.py              # Đọc và ánh xạ dữ liệu config thành Dataclass
 ├── core/
 │   ├── ai_engine/
-│   │   ├── llm_client.py        # Google Gemini client (multi-key pool)
-│   │   ├── pipeline.py          # AI pipeline: phân tích + sinh code
-│   │   ├── prompts.py           # Prompt templates (generator 20 nhánh)
-│   │   └── local_verifier.py    # Compile & verify gen.cpp + solution.cpp
+│   │   ├── llm_client.py        # Gemini Client hỗ trợ pool xoay vòng API keys
+│   │   ├── pipeline.py          # AI Pipeline: bóc tách đề bài, sinh code & test
+│   │   ├── prompts.py           # Bộ prompt tối ưu cho C++20, testlib và subtasks
+│   │   └── local_verifier.py    # Kiểm định biên dịch C++ và sinh test cục bộ
 │   ├── polygon/
-│   │   ├── client.py            # Polygon REST API client (retry + backoff)
-│   │   └── automation.py        # Upload gen.cpp, script, tests, package build
+│   │   ├── client.py            # Client tương tác REST API Polygon (retry, backoff)
+│   │   └── automation.py        # Điều phối 10 bước tự động hóa Polygon
 │   ├── scraper/
-│   │   ├── __init__.py          # Danh sách scrapers
-│   │   ├── codeforces.py
-│   │   ├── atcoder.py
-│   │   ├── marisaoj.py          # MarisaOJ (bypass Cloudflare)
-│   │   └── ...
-│   └── models.py                # Data models (ProblemData, GeneratedCode)
+│   │   ├── __init__.py          # Entrypoint điều hướng scraper phù hợp theo URL
+│   │   ├── base.py              # ScrapedProblem dataclass & BaseScraper interface
+│   │   ├── codeforces.py        # Scraper bài tập Codeforces
+│   │   ├── atcoder.py           # Scraper bài tập AtCoder
+│   │   ├── cses.py              # Scraper bài tập CSES
+│   │   ├── vnoj.py              # Scraper VNOJ (nhận diện đề HTML & đề PDF binary)
+│   │   ├── marisaoj.py          # Scraper MarisaOJ (vượt Cloudflare)
+│   │   └── generic.py           # Generic Scraper thông minh cho các trang khác
+│   └── models.py                # Định nghĩa cấu trúc dữ liệu toàn hệ thống
 ├── ui/
-│   ├── cli.py                   # Interactive CLI menu (UTF-8)
-│   └── dashboard/               # Web dashboard (Flask)
-├── testlib.h                    # Đặt file này vào đây (tải từ GitHub)
-├── run.py                       # Entry point
-├── run.bat                      # Windows shortcut
-├── requirements.txt
-└── problems_summary.xlsx        # Báo cáo Excel tự động
+│   ├── cli.py                   # Giao diện dòng lệnh phong phú với Rich library
+│   └── dashboard/               # Giao diện Web Dashboard (Flask)
+├── testlib.h                    # Thư viện sinh test chuẩn Codeforces
+├── run.py                       # Điểm vào chính của chương trình
+├── run.bat                      # Phím tắt khởi chạy nhanh trên Windows
+├── requirements.txt             # Danh mục thư viện Python yêu cầu
+├── problems_summary.xlsx        # Bảng tổng hợp tiến độ và link Import Codeforces
+└── cache/                       # Bộ nhớ đệm lưu trữ kết quả phân tích & sinh test
 ```
 
 ---
 
-## 🔑 Lưu Ý Quan Trọng
+## 📊 Minh Họa Báo Cáo Xuất Ra Excel (`problems_summary.xlsx`)
 
-- **Checker**: Luôn dùng `std::lcmp.cpp` (Lines Comparer) mặc định. **Không dùng `std::yesno.cpp`** vì gây `PRESENTATION_ERROR` với bài nhiều test cases ($t$ queries).
-- **Generator**: `gen.cpp` phải include `testlib.h`, gọi `registerGen(argc, argv, 1)` và seed `mt19937_64 rng(13022007ULL + test * 999983ULL)`.
-- **Polygon Script**: Script FreeMarker `<#list 1..20 as i> gen ${i} > $ </#list>` sẽ được Polygon tự compile và chạy để sinh test lớn.
-- **MarisaOJ / trang Việt Nam**: Hỗ trợ đầy đủ Unicode tiếng Việt và bypass Cloudflare.
+Sau mỗi lần nạp bài thành công, hệ thống tự động cập nhật bảng tổng hợp với đầy đủ thông tin:
+
+| STT | Tên Bài | Polygon ID | Link Nhập Codeforces (Import URL) | Số Test | Subtasks & Điểm | Trạng Thái Package | Sẵn Sàng Import |
+| :-: | :--- | :-: | :--- | :-: | :--- | :-: | :-: |
+| 1 | `watermelon` | `577334` | `.../p577334/luatgay/watermelon` | 20 | Subtask 1 (30đ), Subtask 2 (30đ), Subtask 3 (40đ) | `READY` | **YES** |
+| 2 | `way-too-long-words` | `577349` | `.../p577349/luatgay/way-too-long-words` | 20 | Subtask 1 (30đ), Subtask 2 (30đ), Subtask 3 (40đ) | `READY` | **YES** |
+| 3 | `accepted` (VNOJ PDF) | `606912` | `.../p606912/luatgay/accepted` | 15 | Subtask 1 (30đ), Subtask 2 (30đ), Subtask 3 (40đ) | `READY` | **YES** |
+| 4 | `to-my-critics` | `606645` | `.../p606645/luatgay/to-my-critics` | 15 | Subtask 1 (30đ), Subtask 2 (30đ), Subtask 3 (40đ) | `READY` | **YES** |
 
 ---
 
-## 📄 License
+## 📜 Giấy Phép (License)
 
-MIT License
+Dự án được phân phối dưới giấy phép **MIT License**. Mọi đóng góp và cải tiến đều được hoan nghênh!
