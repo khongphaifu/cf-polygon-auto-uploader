@@ -12,13 +12,40 @@ from core.models import GeneratedCode, ProblemData, SubtaskData, TestCase
 class LocalVerifier:
     """
     Locally compiles solution.cpp, generator.cpp, and optional validator.cpp using g++ and testlib.h,
-    verifies solution.exe against all sample tests, generates unique subtask tests,
+    verifies solution.exe against all sample tests, checks multi-testcase t/q diversity and safe API size,
     runs solution.exe to compute expected outputs, and assigns groups & 100-point allocations.
     """
+
+    MAX_TEST_BYTES = 3_800_000  # Keep each manual API test safely under 4 MB for fast Polygon upload
 
     def __init__(self, testlib_path: Optional[Path] = None):
         self.testlib_path = testlib_path or (Path(__file__).resolve().parent.parent.parent / "testlib.h")
         self.last_errors: List[str] = []
+
+    @staticmethod
+    def _is_multi_testcase_problem(problem: ProblemData) -> Optional[int]:
+        """Detect if problem expects multiple testcases `t`, returning Sample #1's t (>=2) if confirmed."""
+        if not problem.sample_tests:
+            return None
+        first_line = problem.sample_tests[0].input_text.strip().splitlines()[0].strip() if problem.sample_tests[0].input_text.strip() else ""
+        if not re.fullmatch(r"\d+", first_line):
+            return None
+        sample_t = int(first_line)
+        if sample_t < 2:
+            return None
+        text_blob = " ".join([
+            problem.input_format or "",
+            problem.constraints or "",
+            (problem.statements_by_lang or {}).get("vietnamese", {}).get("input", ""),
+            (problem.statements_by_lang or {}).get("english", {}).get("input", ""),
+        ])
+        if re.search(
+            r"(number of test\s*cases|số(?: lượng)? bộ test|test\s*cases|mỗi bộ test|each test\s*case|\\tau\b|\$t\$)",
+            text_blob,
+            re.IGNORECASE,
+        ):
+            return sample_t
+        return None
 
     @staticmethod
     def _compare_outputs(expected: str, actual: str, checker_type: str) -> bool:
@@ -240,6 +267,8 @@ class LocalVerifier:
                     if run_gen.returncode != 0 or not run_gen.stdout.strip():
                         return False
                     inp = run_gen.stdout.strip() + "\n"
+                    if len(inp.encode("utf-8", errors="ignore")) > self.MAX_TEST_BYTES:
+                        return False
                     if inp in seen_inputs:
                         return False
                     if not _validate_input(inp):
@@ -359,6 +388,23 @@ class LocalVerifier:
                         last_st,
                         f"Subtask {last_st} Extra Test ({extra_seed})",
                     )
+
+            # 4.2 Anti-(t=1) Hardcode Check: catch generators that output t=1 on every multi-testcase test
+            expected_sample_t = self._is_multi_testcase_problem(problem)
+            if allow_early_abort and expected_sample_t is not None and len(valid_tests) >= 5:
+                first_lines = [
+                    (t.input_data.strip().splitlines()[0].strip() if t.input_data.strip() else "")
+                    for t in valid_tests
+                ]
+                ones_count = sum(1 for fl in first_lines if fl == "1")
+                if ones_count >= int(0.75 * len(valid_tests)):
+                    self.last_errors.append(
+                        f"Multi-testcase generator bug: {ones_count}/{len(valid_tests)} generated tests hardcoded t = 1 on line 1 "
+                        f"(whereas Sample #1 has t = {expected_sample_t}). Rewrite generator.cpp so it NEVER hardcodes t = 1: "
+                        f"use varied t (2..20 in subtask 1, 3..30 in subtask 2, and in subtask 3 mix high-t 500..5000 with small n, "
+                        f"medium-t 5..25 summing to full scale, and t=1..3 with large n <= min(N_max, 200000)), keeping sum(n) valid and each test <= 3.5 MB."
+                    )
+                    return code
 
             # 4.5 Deterministic fallback synthesis if generator failed or produced too few tests
             if len(valid_tests) < target_num_tests:

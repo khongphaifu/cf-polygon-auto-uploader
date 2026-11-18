@@ -23,6 +23,8 @@ generation:
   default_memory_limit_mb: 256
   auto_grant_access_to_codeforces: true
   auto_package: true
+  full_package: false
+  verify_package: true
 
 export:
   excel_file_path: "problems_summary.xlsx"

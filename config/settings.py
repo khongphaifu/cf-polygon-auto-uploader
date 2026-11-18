@@ -36,6 +36,8 @@ class GenerationConfig:
     default_memory_limit_mb: int = 256
     auto_grant_access_to_codeforces: bool = True
     auto_package: bool = True
+    full_package: bool = False    # False = Standard package only (faster); True = Standard+Windows+Linux
+    verify_package: bool = True   # Run Polygon server-side verification when building package
 
 
 @dataclass

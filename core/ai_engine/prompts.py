@@ -214,12 +214,22 @@ CRITICAL REQUIREMENTS FOR MAIN SOLUTION (`solution_cpp`):
 
 CRITICAL REQUIREMENTS FOR GENERATOR (`generator_cpp`):
 1. Use `#include "testlib.h"` with `registerGen(argc, argv, 1);`.
-2. Parse command-line arguments:
+2. Parse command-line arguments cleanly:
    - `int subtask = opt<int>(1, 1);` (or `atoi(argv[1])`): Subtask ID (1, 2, 3...).
-   - `int seed = opt<int>(2, 100);` (or `atoi(argv[2])`): Unique seed so every call produces a DIFFERENT test input!
-   - Ensure `rnd.setSeed(seed);` is NOT needed if arguments vary (`registerGen(argc, argv, 1)` seeds from all argv automatically), so ALWAYS vary generated values using `rnd.next(...)`!
-3. Strictly respect the constraints of each subtask (Subtask 1 small, Subtask 2 medium, Subtask 3 full/max limits).
-4. Match the exact Input Format (do not add trailing spaces, end each line with `\\n`).
+   - `int seed = opt<int>(2, 100);`: Seed for variety (note `registerGen` already hashes all `argv`, so varying `seed` changes `rnd`).
+   - `string type_flag = argc >= 4 ? string(argv[3]) : "random";`: Test profile (`"min"`, `"small"`, `"mid"`, `"overflow"`, `"many_t"`, `"random"`, `"stress"`, `"max"`, `"dense"`).
+3. MULTI-TESTCASE (`t` / `T` / `\\tau`) & MULTI-QUERY (`q`) PROBLEMS — CRITICAL RULE:
+   - NEVER hardcode `int t = 1;` or `int q = 1;`!
+   - If the problem has multiple test cases `t` (with a sum-of-N constraint like $\\sum n \\le N_{\\max}$) or queries `q`:
+     * **Subtask 1 (small)**: Vary `t` between `2` and `15` (plus include a `t = 1` edge case when `seed % 5 == 0`), with small `n` per case respecting Subtask 1 limits.
+     * **Subtask 2 (medium)**: Vary `t` between `3` and `30`, scaling `n` so $\\sum n$ reaches Subtask 2 limits without exceeding them.
+     * **Subtask 3 (full scale)**: Use `type_flag` and `seed % 3` to cover ALL 3 mandatory stress profiles:
+       - Profile A (`type_flag` is `"min"`, `"overflow"`, or `seed % 3 == 0` -> High-$t$, Small-$n$): Generate MANY test cases (`t` up to `min(T_max, 5000)`, e.g. `1000..5000`) each with small `n` (`1..10`) so $\\sum n \\le N_{\\text{upload}}$ (catches dirty global arrays/resets and per-case overhead).
+       - Profile B (`type_flag` is `"mid"`, `"random"`, `"dense"`, or `seed % 3 == 1` -> Medium-$t$, Dense $\\sum n$): Generate medium `t` (`5..25`) with `n` distributed so $\\sum n$ approaches target max constraints.
+       - Profile C (`type_flag` is `"max"`, `"stress"`, or `seed % 3 == 2` -> Low-$t$, Max-$n$): Generate `t = 1..3` with `n` hitting full constraints (capped at `min(N_max, 200000)` per single manual test if huge arrays, so generated input stays under `3.5 MB` for reliable Polygon API upload).
+   - Strictly obey $\\sum n \\le N_{\\max}$ and $t \\le T_{\\max}$ in every case so `validator.cpp` passes 100%!
+4. For single-test problems without `t`: generate up to full Subtask 3 constraints (using `min(N_max, 200000)` if printing millions of large numbers would exceed `3.5 MB`).
+5. Match the exact Input Format (no trailing spaces, end every line with `\\n`).
 
 CRITICAL REQUIREMENTS FOR VALIDATOR (`validator_cpp`):
 1. Use `#include "testlib.h"` with `registerValidation(argc, argv);`.

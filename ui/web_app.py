@@ -124,6 +124,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                                 <input type="checkbox" id="noCacheCheck" class="rounded bg-slate-950 border-slate-700 text-blue-500">
                                 <span>Chạy mới (Bỏ qua Cache)</span>
                             </label>
+                            <label class="inline-flex items-center space-x-2 cursor-pointer">
+                                <input type="checkbox" id="fullPkgCheck" class="rounded bg-slate-950 border-slate-700 text-blue-500">
+                                <span>Full Package (Std+Win+Linux)</span>
+                            </label>
                         </div>
                     </div>
 
@@ -205,6 +209,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             const langMode = document.getElementById('langSelect').value;
             const useFileIo = document.getElementById('fileIoCheck').checked;
             const ignoreCache = document.getElementById('noCacheCheck').checked;
+            const fullPackage = document.getElementById('fullPkgCheck').checked;
 
             const hasFile = fileInput.files && fileInput.files.length > 0;
             if (!url && !hasFile) {
@@ -228,7 +233,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                             num_tests: numTests,
                             lang_mode: langMode,
                             use_file_io: useFileIo,
-                            ignore_cache: ignoreCache
+                            ignore_cache: ignoreCache,
+                            full_package: fullPackage
                         })
                     });
                     fileInput.value = "";
@@ -241,7 +247,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                             num_tests: numTests,
                             lang_mode: langMode,
                             use_file_io: useFileIo,
-                            ignore_cache: ignoreCache
+                            ignore_cache: ignoreCache,
+                            full_package: fullPackage
                         })
                     });
                 }
@@ -359,9 +366,10 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
                 lang_mode = data.get("lang_mode", "both")
                 use_file_io = bool(data.get("use_file_io", False))
                 ignore_cache = bool(data.get("ignore_cache", False))
+                full_package = bool(data.get("full_package", False))
             except Exception:
                 url = ""
-                num_tests, lang_mode, use_file_io, ignore_cache = 30, "both", False, False
+                num_tests, lang_mode, use_file_io, ignore_cache, full_package = 30, "both", False, False, False
 
             if not url or DASHBOARD_STATE["is_running"]:
                 self.send_response(400)
@@ -372,7 +380,7 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
 
             threading.Thread(
                 target=run_pipeline_background,
-                args=(url, num_tests, lang_mode, use_file_io, ignore_cache, None),
+                args=(url, num_tests, lang_mode, use_file_io, ignore_cache, full_package, None),
                 daemon=True,
             ).start()
 
@@ -391,6 +399,7 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
                 lang_mode = data.get("lang_mode", "both")
                 use_file_io = bool(data.get("use_file_io", False))
                 ignore_cache = bool(data.get("ignore_cache", False))
+                full_package = bool(data.get("full_package", False))
             except Exception as ex:
                 self.send_response(400)
                 self.send_header("Content-Type", "application/json")
@@ -412,7 +421,7 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
 
             threading.Thread(
                 target=run_pipeline_background,
-                args=(str(saved_path), num_tests, lang_mode, use_file_io, ignore_cache, f"local:{filename}"),
+                args=(str(saved_path), num_tests, lang_mode, use_file_io, ignore_cache, full_package, f"local:{filename}"),
                 daemon=True,
             ).start()
 
@@ -431,6 +440,7 @@ def run_pipeline_background(
     lang_mode: str = "both",
     use_file_io: bool = False,
     ignore_cache: bool = False,
+    full_package: bool = False,
     display_source: Optional[str] = None,
 ):
     DASHBOARD_STATE["is_running"] = True
@@ -473,6 +483,7 @@ def run_pipeline_background(
         lang_mode=lang_mode,
         use_file_io=use_file_io,
         ignore_cache=ignore_cache,
+        full_package=full_package,
         on_log=add_dashboard_log,
         on_problem_parsed=_on_parsed,
         display_source=display_source,

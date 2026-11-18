@@ -87,6 +87,8 @@ class AutoUploaderCLI:
         use_file_io: Optional[bool] = None,
         ignore_cache: bool = False,
         points_policy: Optional[str] = None,
+        full_package: Optional[bool] = None,
+        verify_package: Optional[bool] = None,
     ) -> Optional[PolygonProblemRecord]:
         """Full 10-step pipeline for one problem URL or local file."""
         eff_num_tests = num_tests if num_tests is not None else self.config.generation.num_tests
@@ -136,6 +138,8 @@ class AutoUploaderCLI:
             use_file_io=use_file_io,
             ignore_cache=ignore_cache,
             points_policy=points_policy,
+            full_package=full_package,
+            verify_package=verify_package,
             on_log=_on_log,
             on_problem_parsed=_on_parsed,
         )

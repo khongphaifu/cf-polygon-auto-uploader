@@ -144,27 +144,33 @@ class PolygonAutomation:
         code.checker_type = checker
         return checker
 
-    def setup_validator(self, problem_id: int, code: GeneratedCode, overwrite: bool = False) -> bool:
-        """Upload validator.cpp if verified locally and register as problem validator."""
+    def setup_validator(self, problem_id: int, code: GeneratedCode, overwrite: bool = False, max_attempts: int = 2) -> bool:
+        """Upload validator.cpp if verified locally and register as problem validator with retry."""
         if not code.validator_cpp or not code.validator_cpp.strip():
             return False
-        try:
-            self._upload_with_compiler_fallback(
-                lambda st: self.client.save_file(
-                    problem_id=problem_id,
-                    file_type="source",
-                    name="validator.cpp",
-                    content=code.validator_cpp,
-                    source_type=st,
-                    check_existing=False,
-                    timeout=15,
-                    max_retries=1,
+        for attempt in range(1, max_attempts + 1):
+            try:
+                self._upload_with_compiler_fallback(
+                    lambda st: self.client.save_file(
+                        problem_id=problem_id,
+                        file_type="source",
+                        name="validator.cpp",
+                        content=code.validator_cpp,
+                        source_type=st,
+                        check_existing=False,
+                        timeout=20,
+                        max_retries=2,
+                    )
                 )
-            )
-            self.client.set_validator(problem_id=problem_id, validator_name="validator.cpp")
-            return True
-        except Exception:
-            return False
+                time.sleep(0.6)
+                self.client.set_validator(problem_id=problem_id, validator_name="validator.cpp")
+                active_val = self.client.request("problem.validator", {"problemId": problem_id})
+                if active_val == "validator.cpp":
+                    return True
+            except Exception:
+                if attempt < max_attempts:
+                    time.sleep(1.5)
+        return False
 
     # Step 4: Add file sinh test (gen.cpp)
     def setup_generator(self, problem_id: int, code: GeneratedCode, overwrite: bool = False, max_attempts: int = 2) -> bool:
@@ -407,14 +413,16 @@ class PolygonAutomation:
         self,
         problem_id: int,
         timeout_sec: int = 90,
-        poll_interval: int = 5,
+        poll_interval: int = 4,
         problem: Optional[ProblemData] = None,
         code: Optional[GeneratedCode] = None,
         ai_pipeline: Optional[Any] = None,
         max_repair_retries: int = 2,
         points_policy: str = "EACH_TEST",
+        full_package: bool = False,
+        verify_package: bool = True,
     ) -> Dict[str, Any]:
-        """Commit and trigger package build with auto-repair loop on FAILED status."""
+        """Commit and trigger Standard (default) or Full package build with auto-repair loop on FAILED status."""
         attempt = 0
         while attempt <= max_repair_retries:
             attempt += 1
@@ -427,7 +435,7 @@ class PolygonAutomation:
                 max_prev_id = 0
 
             try:
-                self.client.create_package(problem_id=problem_id, full=True, verify=True)
+                self.client.create_package(problem_id=problem_id, full=full_package, verify=verify_package)
             except Exception as e:
                 err_str = str(e).lower()
                 if "commit the changes" in err_str:
@@ -435,7 +443,7 @@ class PolygonAutomation:
                     self.commit_changes(problem_id=problem_id, message="Retry commit before packaging")
                     time.sleep(1)
                     try:
-                        self.client.create_package(problem_id=problem_id, full=True, verify=True)
+                        self.client.create_package(problem_id=problem_id, full=full_package, verify=verify_package)
                         err_str = ""
                     except Exception as e2:
                         e = e2
@@ -620,6 +628,8 @@ def run_upload_pipeline(
     use_file_io: Optional[bool] = None,
     ignore_cache: bool = False,
     points_policy: Optional[str] = None,
+    full_package: Optional[bool] = None,
+    verify_package: Optional[bool] = None,
     on_log: Optional[Callable[[str, str, int], None]] = None,
     on_problem_parsed: Optional[Callable[[ProblemData, int], None]] = None,
     display_source: Optional[str] = None,
@@ -634,6 +644,8 @@ def run_upload_pipeline(
     eff_file_io = config.generation.use_file_io if use_file_io is None else use_file_io
     eff_policy = (points_policy or config.generation.points_policy or "EACH_TEST").strip().upper()
     eff_validator = getattr(config.generation, "enable_validator", True)
+    eff_full_pkg = getattr(config.generation, "full_package", False) if full_package is None else full_package
+    eff_verify_pkg = getattr(config.generation, "verify_package", True) if verify_package is None else verify_package
     src_label = display_source or source
 
     def _log(msg: str, step: str = "", pct: int = 0) -> None:
@@ -650,7 +662,7 @@ def run_upload_pipeline(
     try:
         cache_dir = Path("cache")
         cache_dir.mkdir(exist_ok=True)
-        cache_key = f"v2|{source.strip()}|{eff_num_tests}|{eff_file_io}|{eff_policy}"
+        cache_key = f"v2.1|{source.strip()}|{eff_num_tests}|{eff_file_io}|{eff_policy}"
         url_hash = hashlib.md5(cache_key.encode("utf-8")).hexdigest()[:12]
         cache_file = cache_dir / f"problem_v2_{url_hash}.pkl"
 
@@ -790,7 +802,9 @@ def run_upload_pipeline(
 
                 # Step 8: Build Package + Auto-Repair
                 if config.generation.auto_package:
-                    _log("Bước 8/10: Yêu cầu Polygon build Full Package & verify (kèm Auto-Repair)...", "8/10 Build Package", 93)
+                    pkg_kind = "Full Package" if eff_full_pkg else "Standard Package"
+                    verify_label = "verify" if eff_verify_pkg else "no-verify"
+                    _log(f"Bước 8/10: Yêu cầu Polygon build {pkg_kind} ({verify_label})...", "8/10 Build Package", 93)
                     pkg_res = polygon_auto.build_and_wait_package(
                         problem_id,
                         timeout_sec=90,
@@ -799,6 +813,8 @@ def run_upload_pipeline(
                         code=gen_code,
                         ai_pipeline=ai_pipeline,
                         points_policy=eff_policy,
+                        full_package=eff_full_pkg,
+                        verify_package=eff_verify_pkg,
                     )
                     record.package_id = pkg_res.get("id")
                     record.package_state = pkg_res.get("state", "BUILDING")

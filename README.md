@@ -22,12 +22,14 @@ Hệ thống tự động hóa toàn diện quy trình lấy đề bài lập tr
 
 ### 2. Kiểm Định Cục Bộ (`LocalVerifier`) & Tự Sửa Lỗi Sớm (Local Self-Healing)
 - **Kiểm tra Sample Tests bắt buộc**: Biên dịch `solution.cpp` (`g++ -O2 -std=c++20`) và chạy đối chiếu trực tiếp với toàn bộ **Sample Input/Output** của đề bài.
-- **Vòng lặp Self-Healing tại máy (tối đa 3 lần)**: Nếu phát hiện lỗi biên dịch, TLE/RE hoặc sai Sample Test (`Wrong Answer`), hệ thống lập tức gửi log lỗi cho AI sửa lại code ngay tại máy trước khi đẩy lên Polygon.
-- **Validator (`testlib.h`) tích hợp**: Sinh và biên dịch `validator.cpp` kiểm tra ràng buộc input sinh ra (có cơ chế fallback an toàn để không chặn pipeline nếu validator quá chặt).
+- **Đảm bảo đa dạng nhiều test cases ($t$) / truy vấn ($q$)**: Tự động kiểm tra `gen.cpp` đối với các bài multi-test để **cấm sinh cứng `t = 1`**. Yêu cầu AI phân tầng đủ 3 nhóm stress: (a) nhiều $t$ ($10^3..5000$) với $n$ nhỏ để bắt lỗi quên reset mảng, (b) $t$ vừa với $\sum n$ dày đặc, và (c) $t$ nhỏ với $n$ chạm giới hạn tối đa (tự giữ mỗi test $\le 3.8\text{ MB}$ để nạp nhanh qua HTTP API).
+- **Vòng lặp Self-Healing tại máy (tối đa 3 lần)**: Nếu phát hiện lỗi biên dịch, TLE/RE, sai Sample Test (`Wrong Answer`), hoặc lỗi hardcode `t = 1`, hệ thống lập tức gửi log lỗi cho AI sửa lại code ngay tại máy trước khi đẩy lên Polygon.
+- **Validator (`testlib.h`) tích hợp**: Sinh và biên dịch `validator.cpp` kiểm tra ràng buộc input sinh ra (kèm cơ chế retry `set_validator` trên Polygon để không bị mất Validator).
 
-### 3. Chia Nhóm `vidu` + `sub1..sub3` & Tính Điểm Chuẩn Tổng 100 Điểm
+### 3. Chia Nhóm `vidu` + `sub1..sub3`, Standard Package & Tổng 100 Điểm
 - **Tên nhóm chuẩn**: Test ví dụ đặt vào nhóm `vidu` (`0.0` điểm, `feedbackPolicy="COMPLETE"`), các subtask đặt vào `sub1`, `sub2`, `sub3`,... (`feedbackPolicy="POINTS"`).
 - **Tổng điểm chuẩn 100.0đ**: Tự động phân bổ điểm từng test (`subtask_points / test_count`) sao cho tổng điểm toàn bài trên Polygon luôn chính xác **100.0 điểm**, hỗ trợ cả `EACH_TEST` và `COMPLETE_GROUP`.
+- **Standard Package mặc định (giảm mạnh thời gian build)**: Mặc định chỉ build gói **Standard** (`full_package: false`, `verify_package: true`) thay vì build cả Standard + Windows + Linux; hỗ trợ bật lại qua cờ `--full-package` hoặc bỏ verify với `--no-verify`.
 - **Compiler hiện đại**: Nạp `solution.cpp`, `gen.cpp`, `validator.cpp` với chuẩn `cpp.gcc14-64-msys2-g++23` (kèm fallback `cpp.g++17`).
 - **Tùy chọn File I/O (`--file-io`)**: Mặc định dùng `stdin/stdout`, hỗ trợ bật nhanh chế độ đọc/ghi file `<ten_bai>.inp` / `<ten_bai>.out`.
 
@@ -87,6 +89,8 @@ generation:
   default_memory_limit_mb: 256
   auto_grant_access_to_codeforces: true
   auto_package: true
+  full_package: false             # false = chỉ tạo Standard package (nhanh); true = Full (Std+Win+Linux)
+  verify_package: true            # chạy verify trên server Polygon khi build package
 
 export:
   excel_file_path: "problems_summary.xlsx"
@@ -106,6 +110,10 @@ export:
 
 # Chạy mới hoàn toàn (bỏ qua Cache) và chia điểm theo nhóm COMPLETE_GROUP:
 .\.venv\Scripts\python.exe run.py -u "https://codeforces.com/problemset/problem/1850/A" -n 20 --points-policy COMPLETE_GROUP --no-cache
+
+# Build Full Package (Std+Win+Linux) hoặc tắt Verify để build siêu tốc:
+.\.venv\Scripts\python.exe run.py -u "https://oj.vnoi.info/problem/icpc26_na_m" -n 30 --full-package
+.\.venv\Scripts\python.exe run.py -u "https://oj.vnoi.info/problem/icpc26_na_m" -n 30 --no-verify
 
 # Xử lý hàng loạt từ file danh sách link:
 .\.venv\Scripts\python.exe run.py --batch urls.txt -n 20 --lang both

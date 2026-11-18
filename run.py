@@ -101,6 +101,18 @@ def main():
         action="store_true",
         help="Bỏ qua bộ nhớ đệm cục bộ, phân tích và sinh lại toàn bộ từ đầu.",
     )
+    parser.add_argument(
+        "--full-package",
+        action="store_true",
+        default=None,
+        help="Build Full Package (Standard + Windows + Linux) thay vì mặc định chỉ Standard.",
+    )
+    parser.add_argument(
+        "--no-verify",
+        action="store_true",
+        default=None,
+        help="Tắt bước verify trên server Polygon khi build package để tạo gói siêu nhanh.",
+    )
 
     args = parser.parse_args()
     if args.web:
@@ -110,6 +122,9 @@ def main():
 
     config_path = Path(args.config) if args.config else None
     cli = AutoUploaderCLI(config_path=config_path)
+
+    eff_full_pkg = True if args.full_package else None
+    eff_verify_pkg = False if args.no_verify else None
 
     if args.test:
         cli.test_connections()
@@ -124,6 +139,8 @@ def main():
             use_file_io=True if args.file_io else None,
             ignore_cache=args.no_cache,
             points_policy=args.points_policy,
+            full_package=eff_full_pkg,
+            verify_package=eff_verify_pkg,
         )
     elif args.batch:
         batch_file = Path(args.batch)
@@ -142,6 +159,8 @@ def main():
                 use_file_io=True if args.file_io else None,
                 ignore_cache=args.no_cache,
                 points_policy=args.points_policy,
+                full_package=eff_full_pkg,
+                verify_package=eff_verify_pkg,
             )
             if rec:
                 results.append(rec)
