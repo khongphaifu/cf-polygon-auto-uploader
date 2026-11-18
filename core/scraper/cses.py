@@ -14,6 +14,6 @@ class CSESScraper(BaseScraper):
         
         content = soup.find("div", class_="content")
         if content:
-            return content.get_text("\n", strip=True)
+            return self.clean_html_preserve_math(content)
             
-        return soup.get_text("\n", strip=True)
+        return self.clean_html_preserve_math(soup)

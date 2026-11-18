@@ -38,16 +38,16 @@ class MarisaOJScraper(BaseScraper):
         for tag_name, attrs in selectors:
             element = soup.find(tag_name, attrs) if attrs else soup.find(tag_name)
             if element:
-                text = element.get_text("\n", strip=True)
+                text = self.clean_html_preserve_math(element)
                 if len(text) > 100:
                     return text
 
         # Final fallback: body text
         body = soup.find("body")
         if body:
-            return body.get_text("\n", strip=True)
+            return self.clean_html_preserve_math(body)
 
-        return soup.get_text("\n", strip=True)
+        return self.clean_html_preserve_math(soup)
 
     def _fetch_with_cloudscraper(self, url: str) -> str:
         """Bypass Cloudflare using cloudscraper library."""

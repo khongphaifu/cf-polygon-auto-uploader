@@ -1,24 +1,24 @@
+import base64
 import json
 import logging
 import os
-import sys
+import re
 import threading
 import time
 import webbrowser
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from typing import Dict, Any, List, Optional
-from urllib.parse import parse_qs, urlparse
+from typing import Optional
+from urllib.parse import urlparse
 
-from config.settings import load_config, AppConfig
+from config.settings import AppConfig, load_config
 from core.ai_engine.llm_client import LLMClient
 from core.ai_engine.pipeline import AIPipeline
-from core.exporter.excel_exporter import ExcelExporter, PolygonProblemRecord
-from core.models import GeneratedCode, ProblemData
+from core.exporter.excel_exporter import ExcelExporter
+from core.models import ProblemData
 from core.notifier import Notifier
-from core.polygon.automation import PolygonAutomation
+from core.polygon.automation import PolygonAutomation, run_upload_pipeline
 from core.polygon.client import PolygonClient
-from core.scraper import scrape_problem_text
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ DASHBOARD_STATE = {
     "logs": [],
     "recent_records": [],
     "last_problem_data": None,
-    "model_name": "gemini-3.1-pro-preview",
+    "model_name": "gemini-3.1-flash-lite",
 }
 
 
@@ -49,10 +49,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CF Polygon Auto Uploader Dashboard</title>
-    <!-- Tailwind CSS CDN -->
+    <title>CF Polygon Auto Uploader v2.0 Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- FontAwesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen font-sans antialiased">
@@ -63,14 +61,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <i class="fa-solid fa-rocket"></i>
             </div>
             <div>
-                <h1 class="text-lg font-bold bg-gradient-to-r from-blue-400 to-indigo-300 bg-clip-text text-transparent">CF Polygon Auto Uploader</h1>
-                <p class="text-xs text-slate-400">10-Step Pipeline | Subtask Division | testlib.h Generator & Script</p>
+                <h1 class="text-lg font-bold bg-gradient-to-r from-blue-400 to-indigo-300 bg-clip-text text-transparent">CF Polygon Auto Uploader v2.0</h1>
+                <p class="text-xs text-slate-400">10-Step Pipeline | Song ngữ VI/EN | Bảng Scoring | Validator | Subtasks 100đ</p>
             </div>
         </div>
         <div class="flex items-center space-x-4">
             <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-950 text-emerald-400 border border-emerald-800/50">
                 <span class="w-2 h-2 mr-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                Gemini 3.1 Pro
+                Gemini 3.1 Flash Lite
             </span>
             <a href="/download-excel" class="px-4 py-2 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center space-x-2 transition shadow">
                 <i class="fa-solid fa-file-excel text-emerald-400"></i>
@@ -82,16 +80,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <main class="max-w-7xl mx-auto px-6 py-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
         <!-- Left 2 Cols: Submit Form & Live Logs -->
         <div class="lg:col-span-2 space-y-6">
-            <!-- URL Submission Box -->
+            <!-- URL & File Submission Box -->
             <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
                 <h2 class="text-base font-semibold text-slate-200 flex items-center mb-4">
-                    <i class="fa-solid fa-link text-blue-400 mr-2"></i> Nhập link bài tập & cấu hình tests
+                    <i class="fa-solid fa-link text-blue-400 mr-2"></i> Nhập Link Bài Tập hoặc Tải File PDF / Ảnh
                 </h2>
                 <div class="space-y-4">
                     <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
                         <div class="md:col-span-3">
-                            <label class="block text-xs font-medium text-slate-400 mb-1">Đường dẫn bài tập (Codeforces, AtCoder, CSES, VNOJ...)</label>
-                            <input type="text" id="urlInput" placeholder="https://codeforces.com/problemset/problem/158/A"
+                            <label class="block text-xs font-medium text-slate-400 mb-1">Đường dẫn bài tập (Codeforces, VNOJ HTML/PDF, AtCoder, CSES, MarisaOJ...)</label>
+                            <input type="text" id="urlInput" placeholder="https://oj.vnoi.info/problem/fc020_accepted"
                                 class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 text-slate-100 placeholder-slate-600 transition">
                         </div>
                         <div>
@@ -100,7 +98,36 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                                 class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 text-slate-100 transition text-center font-mono font-bold">
                         </div>
                     </div>
-                    <div class="flex items-center space-x-3">
+
+                    <!-- Options Row: Language, File Upload, Checkboxes -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-400 mb-1">Ngôn ngữ Đề bài (Statement)</label>
+                            <select id="langSelect" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-blue-500">
+                                <option value="both" selected>Song ngữ (Tiếng Việt + Tiếng Anh)</option>
+                                <option value="vi">Chỉ Tiếng Việt</option>
+                                <option value="en">Chỉ Tiếng Anh</option>
+                                <option value="auto">Tự động theo nguồn</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-400 mb-1">Hoặc chọn File đề (PDF / Ảnh / TXT)</label>
+                            <input type="file" id="fileInput" accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.md"
+                                class="w-full text-xs text-slate-400 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-slate-800 file:text-blue-400 hover:file:bg-slate-700 cursor-pointer">
+                        </div>
+                        <div class="flex flex-col space-y-2 text-xs text-slate-300 pb-1">
+                            <label class="inline-flex items-center space-x-2 cursor-pointer">
+                                <input type="checkbox" id="fileIoCheck" class="rounded bg-slate-950 border-slate-700 text-blue-500">
+                                <span>Dùng File I/O (.inp / .out)</span>
+                            </label>
+                            <label class="inline-flex items-center space-x-2 cursor-pointer">
+                                <input type="checkbox" id="noCacheCheck" class="rounded bg-slate-950 border-slate-700 text-blue-500">
+                                <span>Chạy mới (Bỏ qua Cache)</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center space-x-3 pt-1">
                         <button onclick="startUpload()" id="btnStart"
                             class="flex-1 bg-blue-600 hover:bg-blue-500 active:scale-[0.99] text-white font-medium py-3 px-6 rounded-xl shadow-lg shadow-blue-600/30 flex items-center justify-center space-x-2 transition">
                             <i class="fa-solid fa-cloud-arrow-up"></i>
@@ -118,20 +145,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     </h2>
                     <span id="badgeStep" class="text-xs font-mono px-2.5 py-1 rounded bg-slate-800 text-slate-300">Sẵn sàng</span>
                 </div>
-                <!-- Progress Bar -->
                 <div class="w-full bg-slate-950 rounded-full h-2.5 mb-4 overflow-hidden border border-slate-800">
                     <div id="progressBar" class="bg-gradient-to-r from-blue-500 to-emerald-400 h-2.5 rounded-full transition-all duration-500" style="width: 0%"></div>
                 </div>
-                <!-- Logs Console -->
                 <div id="logBox" class="bg-slate-950 border border-slate-800 rounded-xl p-4 h-72 overflow-y-auto font-mono text-xs text-slate-300 space-y-1.5 scrollbar-thin scrollbar-thumb-slate-800">
-                    <div class="text-slate-600 italic">// Hệ thống sẵn sàng tiếp nhận bài tập mới...</div>
+                    <div class="text-slate-600 italic">// Hệ thống v2.0 sẵn sàng tiếp nhận URL hoặc tệp đề bài mới...</div>
                 </div>
             </div>
         </div>
 
         <!-- Right Col: Summary & Badges -->
         <div class="space-y-6">
-            <!-- Summary Stats -->
             <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
                 <h3 class="text-sm font-semibold text-slate-300 mb-4 flex items-center">
                     <i class="fa-solid fa-circle-check text-emerald-400 mr-2"></i> Bài đã nạp thành công
@@ -141,20 +165,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 </div>
             </div>
 
-            <!-- Feature Badges -->
             <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-3">
-                <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Chuẩn 10 Bước Polygon</h4>
+                <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Chuẩn 10 Bước Polygon v2.0</h4>
                 <div class="text-xs space-y-2 text-slate-300">
-                    <div class="flex items-center"><i class="fa-solid fa-check text-emerald-400 mr-2"></i> 1. Đọc link & Chia Subtask</div>
-                    <div class="flex items-center"><i class="fa-solid fa-check text-emerald-400 mr-2"></i> 2. Ghi Statement LaTeX</div>
-                    <div class="flex items-center"><i class="fa-solid fa-check text-emerald-400 mr-2"></i> 3. Chọn Checker (wcmp/ncmp/custom)</div>
-                    <div class="flex items-center"><i class="fa-solid fa-check text-emerald-400 mr-2"></i> 4. Add gen.cpp (testlib.h)</div>
-                    <div class="flex items-center"><i class="fa-solid fa-check text-emerald-400 mr-2"></i> 5. Add solution.cpp (tag MA)</div>
-                    <div class="flex items-center"><i class="fa-solid fa-check text-emerald-400 mr-2"></i> 6. Ghi Script sinh test & groups</div>
-                    <div class="flex items-center"><i class="fa-solid fa-check text-emerald-400 mr-2"></i> 7. Commit changes</div>
-                    <div class="flex items-center"><i class="fa-solid fa-check text-emerald-400 mr-2"></i> 8. Build Packages & Auto-Repair</div>
-                    <div class="flex items-center"><i class="fa-solid fa-check text-emerald-400 mr-2"></i> 9. Manage access (codeforces)</div>
-                    <div class="flex items-center"><i class="fa-solid fa-check text-emerald-400 mr-2"></i> 10. Link CF & Cập nhật Excel</div>
+                    <div class="flex items-center"><i class="fa-solid fa-check text-emerald-400 mr-2"></i> 1. Đọc URL / PDF / Ảnh & Subtasks</div>
+                    <div class="flex items-center"><i class="fa-solid fa-check text-emerald-400 mr-2"></i> 2. Statement Song ngữ + Ô Scoring</div>
+                    <div class="flex items-center"><i class="fa-solid fa-check text-emerald-400 mr-2"></i> 3. Checker + Validator (testlib.h)</div>
+                    <div class="flex items-center"><i class="fa-solid fa-check text-emerald-400 mr-2"></i> 4. Self-Healing Sample Check</div>
+                    <div class="flex items-center"><i class="fa-solid fa-check text-emerald-400 mr-2"></i> 5. Nạp gen.cpp & solution.cpp (g++23)</div>
+                    <div class="flex items-center"><i class="fa-solid fa-check text-emerald-400 mr-2"></i> 6. Nạp vidu (0đ) + sub1..sub3 (100đ)</div>
+                    <div class="flex items-center"><i class="fa-solid fa-check text-emerald-400 mr-2"></i> 7. Commit working copy</div>
+                    <div class="flex items-center"><i class="fa-solid fa-check text-emerald-400 mr-2"></i> 8. Build Package & Auto-Repair</div>
+                    <div class="flex items-center"><i class="fa-solid fa-check text-emerald-400 mr-2"></i> 9. Cấp quyền WRITE cho codeforces</div>
+                    <div class="flex items-center"><i class="fa-solid fa-check text-emerald-400 mr-2"></i> 10. Link Import CF & Xuất Excel</div>
                 </div>
             </div>
         </div>
@@ -163,27 +186,69 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <script>
         function copyText(text) {
             navigator.clipboard.writeText(text);
-            alert("Đã sao chép link Import Codeforces:\n" + text);
+            alert("Đã sao chép link Import Codeforces:\\n" + text);
+        }
+
+        function readFileAsBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result.split(',')[1]);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
         }
 
         async function startUpload() {
             const url = document.getElementById('urlInput').value.trim();
+            const fileInput = document.getElementById('fileInput');
             const numTests = parseInt(document.getElementById('numTestsInput').value) || 30;
-            if (!url) {
-                alert("Vui lòng nhập đường link bài tập!");
+            const langMode = document.getElementById('langSelect').value;
+            const useFileIo = document.getElementById('fileIoCheck').checked;
+            const ignoreCache = document.getElementById('noCacheCheck').checked;
+
+            const hasFile = fileInput.files && fileInput.files.length > 0;
+            if (!url && !hasFile) {
+                alert("Vui lòng nhập đường link bài tập hoặc chọn tệp PDF/Ảnh!");
                 return;
             }
+
             document.getElementById('btnStart').disabled = true;
             document.getElementById('btnStart').classList.add('opacity-50');
 
             try {
-                await fetch('/api/start', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({url: url, num_tests: numTests})
-                });
+                if (hasFile) {
+                    const file = fileInput.files[0];
+                    const b64 = await readFileAsBase64(file);
+                    await fetch('/api/upload-file', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            filename: file.name,
+                            content_b64: b64,
+                            num_tests: numTests,
+                            lang_mode: langMode,
+                            use_file_io: useFileIo,
+                            ignore_cache: ignoreCache
+                        })
+                    });
+                    fileInput.value = "";
+                } else {
+                    await fetch('/api/start', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            url: url,
+                            num_tests: numTests,
+                            lang_mode: langMode,
+                            use_file_io: useFileIo,
+                            ignore_cache: ignoreCache
+                        })
+                    });
+                }
             } catch (err) {
                 console.error(err);
+                document.getElementById('btnStart').disabled = false;
+                document.getElementById('btnStart').classList.remove('opacity-50');
             }
         }
 
@@ -283,16 +348,20 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length).decode("utf-8")
+
         if parsed.path == "/api/start":
-            content_length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(content_length).decode("utf-8")
             try:
                 data = json.loads(body)
                 url = data.get("url", "").strip()
                 num_tests = int(data.get("num_tests", 30))
+                lang_mode = data.get("lang_mode", "both")
+                use_file_io = bool(data.get("use_file_io", False))
+                ignore_cache = bool(data.get("ignore_cache", False))
             except Exception:
                 url = ""
-                num_tests = 30
+                num_tests, lang_mode, use_file_io, ignore_cache = 30, "both", False, False
 
             if not url or DASHBOARD_STATE["is_running"]:
                 self.send_response(400)
@@ -301,22 +370,77 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({"error": "Already running or invalid URL"}).encode("utf-8"))
                 return
 
-            threading.Thread(target=run_pipeline_background, args=(url, num_tests), daemon=True).start()
+            threading.Thread(
+                target=run_pipeline_background,
+                args=(url, num_tests, lang_mode, use_file_io, ignore_cache, None),
+                daemon=True,
+            ).start()
 
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps({"status": "started", "url": url, "num_tests": num_tests}).encode("utf-8"))
+
+        elif parsed.path == "/api/upload-file":
+            try:
+                data = json.loads(body)
+                filename = Path(data.get("filename", "problem.pdf")).name
+                filename = re.sub(r"[^a-zA-Z0-9_.-]", "_", filename)
+                file_bytes = base64.b64decode(data.get("content_b64", ""))
+                num_tests = int(data.get("num_tests", 30))
+                lang_mode = data.get("lang_mode", "both")
+                use_file_io = bool(data.get("use_file_io", False))
+                ignore_cache = bool(data.get("ignore_cache", False))
+            except Exception as ex:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": f"Invalid upload payload: {ex}"}).encode("utf-8"))
+                return
+
+            if not file_bytes or DASHBOARD_STATE["is_running"]:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Empty file or job already running"}).encode("utf-8"))
+                return
+
+            upload_dir = Path("cache") / "uploads"
+            upload_dir.mkdir(parents=True, exist_ok=True)
+            saved_path = upload_dir / filename
+            saved_path.write_bytes(file_bytes)
+
+            threading.Thread(
+                target=run_pipeline_background,
+                args=(str(saved_path), num_tests, lang_mode, use_file_io, ignore_cache, f"local:{filename}"),
+                daemon=True,
+            ).start()
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"status": "started", "file": filename, "num_tests": num_tests}).encode("utf-8"))
         else:
             self.send_response(404)
             self.end_headers()
 
 
-def run_pipeline_background(url: str, num_tests: int = 30):
+def run_pipeline_background(
+    url: str,
+    num_tests: int = 30,
+    lang_mode: str = "both",
+    use_file_io: bool = False,
+    ignore_cache: bool = False,
+    display_source: Optional[str] = None,
+):
     DASHBOARD_STATE["is_running"] = True
-    DASHBOARD_STATE["current_url"] = url
+    DASHBOARD_STATE["current_url"] = display_source or url
     DASHBOARD_STATE["logs"] = []
-    add_dashboard_log(f"Bắt đầu xử lý bài tập: {url} (Yêu cầu {num_tests} tests)", step="Khởi động", progress=5)
+    add_dashboard_log(
+        f"Bắt đầu xử lý: {display_source or url} (Tests: {num_tests}, Lang: {lang_mode})",
+        step="Khởi động",
+        progress=5,
+    )
 
     config: AppConfig = load_config()
     polygon_client = PolygonClient(
@@ -334,114 +458,31 @@ def run_pipeline_background(url: str, num_tests: int = 30):
     exporter = ExcelExporter(output_path=config.export.excel_file_path)
     notifier = Notifier(config.notifications)
 
-    record = PolygonProblemRecord(id=0, name="Unknown", source_url=url, status="RUNNING")
-
-    try:
-        # Bước 1: Đọc link & Phân tích đề bài + Subtasks
-        add_dashboard_log("Bước 1/10: Đang cào dữ liệu và phân tích Subtasks...", step="1/10 Đọc link & Subtasks", progress=10)
-        raw_text = scrape_problem_text(url)
-        if not raw_text or len(raw_text.strip()) < 30:
-            raise ValueError("Không thể lấy nội dung bài tập từ link.")
-        problem_data: ProblemData = ai_pipeline.parse_problem_content(url, raw_text)
-        add_dashboard_log(f"Đã phân tích: {problem_data.title} ({problem_data.short_name})", step="1/10 Hoàn tất AI", progress=20)
-
-        # Log Subtasks
+    def _on_parsed(problem_data: ProblemData, _target_tests: int) -> None:
         for s in problem_data.subtasks:
             add_dashboard_log(f"  * Subtask {s.subtask_id} ({s.points} pts): {s.description}")
 
-        # AI Code, Generator, Script & Local Dual-Verification
-        add_dashboard_log(f"AI đang viết Solution C++20 tối ưu, Generator và Script ({num_tests} tests)...", step="Sinh Code & Script", progress=30)
-        gen_code: GeneratedCode = ai_pipeline.generate_code_and_tests(problem_data, num_tests=num_tests)
-        add_dashboard_log(f"Đã kiểm định cục bộ và sinh đáp án trực tiếp cho {len(gen_code.tests)} tests.", step="Kiểm định cục bộ OK", progress=40)
+    record = run_upload_pipeline(
+        source=url,
+        config=config,
+        polygon_auto=polygon_auto,
+        ai_pipeline=ai_pipeline,
+        exporter=exporter,
+        notifier=notifier,
+        num_tests=num_tests,
+        lang_mode=lang_mode,
+        use_file_io=use_file_io,
+        ignore_cache=ignore_cache,
+        on_log=add_dashboard_log,
+        on_problem_parsed=_on_parsed,
+        display_source=display_source,
+    )
 
-        # Khởi tạo Problem trên Polygon
-        p_info = polygon_auto.get_or_create_problem(problem_data.short_name)
-        problem_id = p_info["id"]
-        owner = p_info.get("owner") or "luatgay"
-        record.id = problem_id
-        record.name = problem_data.short_name
-        record.owner = owner
-        record.url = f"https://polygon.codeforces.com/p{problem_id}/{problem_data.short_name}"
-        record.cf_import_url = f"https://polygon.codeforces.com/p{problem_id}/{owner}/{problem_data.short_name}"
-        record.total_tests = len(gen_code.tests)
-
-        # Bước 2: Ghi Statement
-        add_dashboard_log("Bước 2/10: Đang ghi Statement LaTeX & Giới hạn lên Polygon...", step="2/10 Ghi Statement", progress=50)
-        polygon_auto.setup_problem_statement(problem_id, problem_data)
-
-        # Bước 3: Chọn Checker
-        add_dashboard_log(f"Bước 3/10: Thiết lập Checker ({gen_code.checker_type})...", step="3/10 Chọn Checker", progress=55)
-        polygon_auto.setup_checker(problem_id, gen_code)
-
-        # Bước 4: Add file sinh test
-        add_dashboard_log("Bước 4/10: Nạp file sinh test (gen.cpp dùng testlib.h) lên Polygon Files...", step="4/10 Add gen.cpp", progress=60)
-        polygon_auto.setup_generator(problem_id, gen_code)
-
-        # Bước 5: Add file solution
-        add_dashboard_log("Bước 5/10: Nạp Solution C++20 chính (solution.cpp tag MA) lên Polygon...", step="5/10 Add solution.cpp", progress=65)
-        polygon_auto.setup_solution(problem_id, gen_code)
-
-        # Bước 6: Ghi script sinh test & tests
-        add_dashboard_log(f"Bước 6/10: Ghi Script sinh test và nạp {len(gen_code.tests)} tests chia subtask...", step="6/10 Ghi Script Tests", progress=70)
-        polygon_auto.setup_test_script_and_tests(problem_id, problem_data, gen_code)
-
-        # Bước 7: Commit changes
-        add_dashboard_log("Bước 7/10: Commit working copy trên Polygon...", step="7/10 Commit Changes", progress=75)
-        polygon_auto.commit_changes(problem_id, f"Auto-commit: added statement, checker, generator, solution MA, and test script with {len(gen_code.tests)} tests")
-
-        # Bước 8: Package with Auto-Repair
-        if config.generation.auto_package:
-            add_dashboard_log("Bước 8/10: Yêu cầu Polygon build Full Package & verify (kèm Auto-Repair)...", step="8/10 Build Package", progress=85)
-            pkg_res = polygon_auto.build_and_wait_package(
-                problem_id,
-                timeout_sec=90,
-                poll_interval=4,
-                problem=problem_data,
-                code=gen_code,
-                ai_pipeline=ai_pipeline,
-            )
-            record.package_id = pkg_res.get("id")
-            record.package_state = pkg_res.get("state", "BUILDING")
-            if record.package_state == "FAILED":
-                record.status = "FAILED"
-                record.error_message = pkg_res.get("error_message") or f"Polygon package build failed on package {record.package_id}."
-                add_dashboard_log(f"❌ Package FAILED: {record.error_message}", step="Thất bại", progress=100)
-            else:
-                record.status = "SUCCESS"
-                add_dashboard_log(f"✓ Package READY (ID: {record.package_id})", step="Package READY", progress=90)
-        else:
-            record.status = "SUCCESS"
-
-        # Bước 9: Manage Access
-        if config.generation.auto_grant_access_to_codeforces:
-            add_dashboard_log("Bước 9/10: Cấp quyền chia sẻ cho user 'codeforces'...", step="9/10 Phân quyền", progress=95)
-            polygon_auto.grant_access_to_codeforces(problem_id)
-
-        # Bước 10: Link hoàn chỉnh & Excel
-        subtasks_summary = ", ".join([f"Subtask {s.subtask_id} ({s.points} pts: {s.test_count} tests)" for s in problem_data.subtasks])
-        record.subtasks_summary = subtasks_summary
-
-        if record.status == "SUCCESS":
-            add_dashboard_log(f"🎉 Bước 10/10: HOÀN TẤT THÀNH CÔNG BÀI TẬP: {problem_data.title}!", step="Hoàn thành", progress=100)
-            add_dashboard_log(f"👉 Link Import Codeforces: {record.cf_import_url}", step="Hoàn thành", progress=100)
-
-    except Exception as e:
-        record.status = "FAILED"
-        record.error_message = str(e)
-        add_dashboard_log(f"❌ Lỗi: {e}", step="Thất bại", progress=100)
-
-    # Export to Excel
-    try:
-        exporter.export_records([record])
-        add_dashboard_log(f"Đã lưu thông tin vào problems_summary.xlsx")
-    except Exception:
-        pass
-
-    # Send Notification
-    try:
-        notifier.notify_problem_completed(record)
-    except Exception:
-        pass
+    if record.status == "SUCCESS":
+        add_dashboard_log(f"🎉 Bước 10/10: HOÀN TẤT THÀNH CÔNG BÀI TẬP: {record.name}!", step="Hoàn thành", progress=100)
+        add_dashboard_log(f"👉 Link Import Codeforces: {record.cf_import_url}", step="Hoàn thành", progress=100)
+    else:
+        add_dashboard_log(f"❌ Thất bại: {record.error_message}", step="Thất bại", progress=100)
 
     DASHBOARD_STATE["recent_records"].insert(0, {
         "id": record.id,
@@ -458,10 +499,10 @@ def run_pipeline_background(url: str, num_tests: int = 30):
 
 def start_web_dashboard(port: int = 8080, open_browser: bool = True):
     server = HTTPServer(("127.0.0.1", port), DashboardRequestHandler)
-    print(f"\n=======================================================")
-    print(f"🚀 CF Polygon Auto Uploader Web Dashboard đã sẵn sàng!")
+    print("\n=======================================================")
+    print("🚀 CF Polygon Auto Uploader v2.0 Web Dashboard đã sẵn sàng!")
     print(f"🌐 Truy cập tại: http://127.0.0.1:{port}")
-    print(f"=======================================================\n")
+    print("=======================================================\n")
     if open_browser:
         threading.Thread(target=lambda: (time.sleep(1), webbrowser.open(f"http://127.0.0.1:{port}"))).start()
     server.serve_forever()

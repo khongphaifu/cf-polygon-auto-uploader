@@ -33,13 +33,17 @@ class ProblemData:
     input_format: str = ""
     output_format: str = ""
     constraints: str = ""
+    scoring: str = ""  # Polygon dedicated scoring table (LaTeX tabular)
     notes: Optional[str] = None
     tutorial: str = ""  # Detailed editorial/tutorial in LaTeX
     time_limit_ms: int = 1000
     memory_limit_mb: int = 256
+    input_file: str = ""
+    output_file: str = ""
     checker_type: str = "std::lcmp.cpp"
     sample_tests: List[SampleTestCase] = field(default_factory=list)
     subtasks: List[SubtaskData] = field(default_factory=list)
+    statements_by_lang: Dict[str, Dict[str, str]] = field(default_factory=dict)
     raw_html: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:

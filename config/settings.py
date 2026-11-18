@@ -19,7 +19,7 @@ class AIConfig:
     gemini_backup_keys: list = field(default_factory=list)
     openai_api_key: Optional[str] = None
     claude_api_key: Optional[str] = None
-    model_name: str = "gemini-3.5-flash-lite"
+    model_name: str = "gemini-3.1-flash-lite"
 
 
 @dataclass
@@ -27,6 +27,10 @@ class GenerationConfig:
     num_tests: int = 30
     enable_subtasks: bool = True
     default_subtask_split: str = "30:30:40"
+    statement_lang: str = "both"  # "vi", "en", "both", or "auto"
+    points_policy: str = "EACH_TEST"  # "EACH_TEST" or "COMPLETE_GROUP"
+    use_file_io: bool = False
+    enable_validator: bool = True
     include_samples_in_statements: bool = True
     default_time_limit_ms: int = 1000
     default_memory_limit_mb: int = 256
@@ -75,21 +79,27 @@ def load_config(config_path: Optional[Path] = None) -> AppConfig:
             ai=AIConfig(
                 provider=os.getenv("AI_PROVIDER", "gemini"),
                 gemini_api_key=os.getenv("GEMINI_API_KEY", ""),
-                model_name=os.getenv("AI_MODEL_NAME", "gemini-2.5-flash"),
+                model_name=os.getenv("AI_MODEL_NAME", "gemini-3.1-flash-lite"),
             ),
         )
 
     with open(config_path, "r", encoding="utf-8") as f:
         data: Dict[str, Any] = yaml.safe_load(f) or {}
 
-    polygon_data = data.get("polygon", {})
-    ai_data = data.get("ai", {})
-    gen_data = data.get("generation", {})
-    export_data = data.get("export", {})
+    polygon_data = data.get("polygon", {}) or {}
+    ai_data = data.get("ai", {}) or {}
+    gen_data = data.get("generation", {}) or {}
+    export_data = data.get("export", {}) or {}
+    notif_data = data.get("notifications", {}) or {}
+
+    def _filter_fields(cls, raw: Dict[str, Any]) -> Dict[str, Any]:
+        valid = set(cls.__dataclass_fields__.keys())
+        return {k: v for k, v in raw.items() if k in valid and v is not None}
 
     return AppConfig(
-        polygon=PolygonConfig(**polygon_data),
-        ai=AIConfig(**ai_data),
-        generation=GenerationConfig(**gen_data),
-        export=ExportConfig(**export_data),
+        polygon=PolygonConfig(**_filter_fields(PolygonConfig, polygon_data)),
+        ai=AIConfig(**_filter_fields(AIConfig, ai_data)),
+        generation=GenerationConfig(**_filter_fields(GenerationConfig, gen_data)),
+        export=ExportConfig(**_filter_fields(ExportConfig, export_data)),
+        notifications=NotificationConfig(**_filter_fields(NotificationConfig, notif_data)),
     )

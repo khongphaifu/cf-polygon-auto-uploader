@@ -14,6 +14,6 @@ class CodeforcesScraper(BaseScraper):
         
         problem_statement = soup.find("div", class_="problem-statement")
         if problem_statement:
-            return problem_statement.get_text("\n", strip=True)
+            return self.clean_html_preserve_math(problem_statement)
             
-        return soup.get_text("\n", strip=True)
+        return self.clean_html_preserve_math(soup)

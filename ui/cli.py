@@ -22,11 +22,10 @@ from rich.prompt import Prompt, Confirm
 
 from config.settings import load_config, AppConfig
 from core.models import ProblemData, GeneratedCode, PolygonProblemRecord, SubtaskData
-from core.scraper import scrape_problem_text, scrape_problem_data
 from core.ai_engine.llm_client import LLMClient
 from core.ai_engine.pipeline import AIPipeline
 from core.polygon.client import PolygonClient, PolygonAPIError
-from core.polygon.automation import PolygonAutomation
+from core.polygon.automation import PolygonAutomation, run_upload_pipeline
 from core.exporter.excel_exporter import ExcelExporter
 from core.notifier import Notifier
 
@@ -55,10 +54,11 @@ class AutoUploaderCLI:
 
     def print_banner(self) -> None:
         console.clear()
+        io_label = "<ten_bai>.inp/.out" if self.config.generation.use_file_io else "stdin/stdout"
         banner_text = (
-            "[bold cyan]🚀 CODEFORCES & POLYGON AUTO UPLOADER (10-STEP PIPELINE)[/bold cyan]\n"
-            "[italic white]Quy trình chuẩn: Đọc link -> Statement -> Checker -> Gen -> Solution -> Script -> Commit -> Package -> Access -> Link CF[/italic white]\n"
-            f"[dim]AI Model: {self.config.ai.model_name} | Subtask Division: Bật | Default Tests: {self.config.generation.num_tests}[/dim]"
+            "[bold cyan]🚀 CODEFORCES & POLYGON AUTO UPLOADER v2.0 (10-STEP PIPELINE)[/bold cyan]\n"
+            "[italic white]Quy trình chuẩn: Đọc đề/PDF/Ảnh -> Statement (Scoring) -> Checker/Val -> Gen -> Solution C++23 -> Tests 100đ -> Commit -> Package -> Access -> CF Link[/italic white]\n"
+            f"[dim]AI: {self.config.ai.model_name} | Lang: {self.config.generation.statement_lang} | IO: {io_label} | Policy: {self.config.generation.points_policy} | Tests: {self.config.generation.num_tests}[/dim]"
         )
         console.print(Panel(banner_text, border_style="bright_blue", expand=False))
 
@@ -79,215 +79,81 @@ class AutoUploaderCLI:
         except Exception as e:
             console.print(f"[bold red]✗ Gemini API Thất bại:[/bold red] {e}")
 
-    def process_single_url(self, url: str, num_tests: Optional[int] = None) -> Optional[PolygonProblemRecord]:
-        """Full 10-step pipeline for one problem URL."""
-        if num_tests is None:
-            num_tests = self.config.generation.num_tests
+    def process_single_url(
+        self,
+        url: str,
+        num_tests: Optional[int] = None,
+        lang_mode: Optional[str] = None,
+        use_file_io: Optional[bool] = None,
+        ignore_cache: bool = False,
+        points_policy: Optional[str] = None,
+    ) -> Optional[PolygonProblemRecord]:
+        """Full 10-step pipeline for one problem URL or local file."""
+        eff_num_tests = num_tests if num_tests is not None else self.config.generation.num_tests
+        eff_lang = (lang_mode or self.config.generation.statement_lang or "both").strip().lower()
 
         console.print(f"\n[bold cyan]🎯 Bắt đầu xử lý bài tập:[/bold cyan] [underline blue]{url}[/underline blue]")
-        console.print(f"  [dim]Số lượng test yêu cầu: {num_tests} tests (chia theo subtask)[/dim]")
+        console.print(f"  [dim]Số tests: {eff_num_tests} | Ngôn ngữ Statement: {eff_lang}[/dim]")
 
-        record = PolygonProblemRecord(
-            id=0,
-            name="Unknown",
-            source_url=url,
-            status="RUNNING",
-        )
+        def _on_log(msg: str, step: str, pct: int) -> None:
+            if msg.startswith("❌"):
+                console.print(f"  [bold red]{msg}[/bold red]")
+            elif msg.startswith("⚠️"):
+                console.print(f"  [bold yellow]{msg}[/bold yellow]")
+            elif msg.startswith("✓") or msg.startswith("⚡"):
+                console.print(f"  [green]{msg}[/green]")
+            else:
+                console.print(f"  [cyan]{msg}[/cyan]")
 
-        try:
-            cache_dir = Path("cache")
-            cache_dir.mkdir(exist_ok=True)
-            import hashlib, pickle
-            url_hash = hashlib.md5(url.strip().encode("utf-8")).hexdigest()[:10]
-            cache_file = cache_dir / f"problem_{url_hash}_{num_tests}.pkl"
-
-            problem_data: Optional[ProblemData] = None
-            gen_code: Optional[GeneratedCode] = None
-            if cache_file.exists():
-                try:
-                    with open(cache_file, "rb") as cf:
-                        cached = pickle.load(cf)
-                        problem_data = cached.get("problem_data")
-                        gen_code = cached.get("gen_code")
-                        console.print("  [bold green]⚡ [CACHE HIT][/bold green] [cyan]Đã tải dữ liệu đề bài & code/test từ bộ nhớ đệm cục bộ (0.01s)![/cyan]")
-                except Exception:
-                    pass
-
-            if not problem_data:
-                # ==================== BƯỚC 1: ĐỌC LINK & PHÂN TÍCH ĐỀ BÀI + SUBTASKS ====================
-                with console.status("[bold yellow]Bước 1/10: Đang cào dữ liệu và phân tích Subtasks...[/bold yellow]"):
-                    scraped = scrape_problem_data(url)
-                    raw_text = scraped.raw_text
-                    if not scraped.pdf_bytes and (not raw_text or len(raw_text.strip()) < 30):
-                        raise ValueError("Không thể lấy nội dung đề bài từ đường link.")
-                    if scraped.pdf_bytes:
-                        console.print(f"  [bold cyan]📄 Đã phát hiện tài liệu PDF ({len(scraped.pdf_bytes)} bytes): {scraped.pdf_url}[/bold cyan]")
-                    problem_data = self.ai_pipeline.parse_problem_content(url, raw_text, pdf_bytes=scraped.pdf_bytes)
-
-            console.print(f"  [green]✓[/green] [bold white]{problem_data.title}[/bold white] (Short Name: [cyan]{problem_data.short_name}[/cyan])")
-            console.print(f"  [dim]Giới hạn: {problem_data.time_limit_ms}ms | {problem_data.memory_limit_mb}MB | Samples: {len(problem_data.sample_tests)}[/dim]")
-
-            # Display Subtasks Table
+        def _on_parsed(problem_data: ProblemData, target_tests: int) -> None:
             if problem_data.subtasks:
-                sub_table = Table(title="📑 Phân Bổ Subtasks Chuẩn Đề Bài", show_header=True, header_style="bold magenta")
-                sub_table.add_column("Subtask", justify="center", style="cyan")
+                sub_table = Table(title="📑 Phân Bổ Subtasks Chuẩn Đề Bài (Tổng 100đ)", show_header=True, header_style="bold magenta")
+                sub_table.add_column("Subtask / Group", justify="center", style="cyan")
                 sub_table.add_column("Điểm (%)", justify="center", style="green")
                 sub_table.add_column("Dự Kiến Tests", justify="center", style="yellow")
                 sub_table.add_column("Ràng Buộc (Constraints)", style="white")
 
                 total_pts = sum(s.points for s in problem_data.subtasks) or 100.0
                 for s in problem_data.subtasks:
-                    est_tests = max(2, int(round((s.points / total_pts) * num_tests)))
+                    est_tests = max(2, int(round((s.points / total_pts) * target_tests)))
                     sub_table.add_row(
-                        f"Subtask {s.subtask_id}",
+                        f"Subtask {s.subtask_id} (sub{s.subtask_id})",
                         f"{s.points} pts",
                         f"{est_tests} tests",
                         s.description,
                     )
                 console.print(sub_table)
 
-            if not gen_code:
-                # Generate solution, testlib generator, test script, and local verification
-                with console.status(f"[bold yellow]AI đang viết Solution C++20 tối ưu, Generator và Script ({num_tests} tests)...[/bold yellow]"):
-                    gen_code = self.ai_pipeline.generate_code_and_tests(problem_data, num_tests=num_tests)
-                try:
-                    with open(cache_file, "wb") as cf:
-                        pickle.dump({"problem_data": problem_data, "gen_code": gen_code}, cf)
-                except Exception:
-                    pass
+        record = run_upload_pipeline(
+            source=url,
+            config=self.config,
+            polygon_auto=self.polygon_auto,
+            ai_pipeline=self.ai_pipeline,
+            exporter=self.exporter,
+            notifier=self.notifier,
+            num_tests=num_tests,
+            lang_mode=lang_mode,
+            use_file_io=use_file_io,
+            ignore_cache=ignore_cache,
+            points_policy=points_policy,
+            on_log=_on_log,
+            on_problem_parsed=_on_parsed,
+        )
 
-            console.print(f"  [green]✓[/green] Đã có Solution C++20, Generator, Script và kiểm định cục bộ {len(gen_code.tests)} tests thành công.")
+        if record.status == "SUCCESS":
+            console.print(f"\n[bold green]🎉 Bước 10: HOÀN TẤT BÀI TẬP: {record.name}[/bold green]")
+            console.print(Panel(
+                f"[bold white]Link Nhập Codeforces (CF Import URL):[/bold white]\n"
+                f"[bold yellow]{record.cf_import_url}[/bold yellow]\n\n"
+                f"[bold white]Link Quản Trị Polygon:[/bold white]\n"
+                f"[cyan]{record.url}[/cyan]\n\n"
+                f"[dim]Tổng số tests: {record.total_tests} | Subtasks: {record.subtasks_summary} | Package ID: {record.package_id or 'queued'} ({record.package_state})[/dim]",
+                title="🔗 KẾT QUẢ XUẤT BÀI HOÀN CHỈNH",
+                border_style="bright_green",
+            ))
 
-            # Thực hiện các bước nạp lên Polygon với cơ chế tự động thử lại (Retry Loop)
-            max_upload_retries = 2
-            for upload_attempt in range(1, max_upload_retries + 1):
-                if upload_attempt > 1:
-                    console.print(f"\n[bold yellow]🔄 Đang tự động thử lại toàn trình trên Polygon (Lượt {upload_attempt}/{max_upload_retries})...[/bold yellow]")
-
-                try:
-                    # Khởi tạo Problem trên Polygon
-                    p_info = self.polygon_auto.get_or_create_problem(problem_data.short_name)
-                    problem_id = p_info["id"]
-                    owner = p_info.get("owner") or "luatgay"
-                    record.id = problem_id
-                    record.name = problem_data.short_name
-                    record.owner = owner
-                    record.url = f"https://polygon.codeforces.com/p{problem_id}/{problem_data.short_name}"
-                    record.cf_import_url = f"https://polygon.codeforces.com/p{problem_id}/{owner}/{problem_data.short_name}"
-                    record.total_tests = len(gen_code.tests)
-
-                    # ==================== BƯỚC 2: GHI STATEMENT ====================
-                    with console.status("[bold yellow]Bước 2/10: Ghi Statement LaTeX và cấu hình giới hạn lên Polygon...[/bold yellow]"):
-                        self.polygon_auto.setup_problem_statement(problem_id, problem_data)
-                    console.print("  [green]✓[/green] Bước 2: Statement LaTeX & Giới hạn đã ghi thành công.")
-
-                    # ==================== BƯỚC 3: CHỌN CHECKER ====================
-                    with console.status(f"[bold yellow]Bước 3/10: Thiết lập Checker ({gen_code.checker_type})...[/bold yellow]"):
-                        self.polygon_auto.setup_checker(problem_id, gen_code)
-                    console.print(f"  [green]✓[/green] Bước 3: Checker đã đặt: [bold cyan]{gen_code.checker_type}[/bold cyan]")
-
-                    # ==================== BƯỚC 4: ADD FILE SINH TEST ====================
-                    with console.status("[bold yellow]Bước 4/10: Nạp file sinh test (gen.cpp & testlib.h) lên Polygon Files...[/bold yellow]"):
-                        gen_ok = self.polygon_auto.setup_generator(problem_id, gen_code)
-                    if gen_ok:
-                        console.print("  [green]✓[/green] Bước 4: Đã nạp gen.cpp (source) và testlib.h (resource).")
-                    else:
-                        console.print("  [dim yellow]⚡ Bước 4: Generator C++ đã kiểm định cục bộ; chuyển sang nạp toàn bộ testcases subtasks vào hệ thống.[/dim yellow]")
-
-                    # ==================== BƯỚC 5: ADD FILE SOLUTION ====================
-                    with console.status("[bold yellow]Bước 5/10: Nạp Solution C++20 chính (solution.cpp tag MA) lên Polygon...[/bold yellow]"):
-                        sol_ok = self.polygon_auto.setup_solution(problem_id, gen_code)
-                    if sol_ok:
-                        console.print("  [green]✓[/green] Bước 5: Đã nạp solution.cpp (Tag: MA).")
-                    else:
-                        console.print("  [dim yellow]⚡ Bước 5: Solution C++20 đã giải và kiểm định 100% cục bộ; tiếp tục ghi nhận pipeline.[/dim yellow]")
-
-                    # ==================== BƯỚC 6: GHI SCRIPT SINH TEST & TESTS ====================
-                    with console.status(f"[bold yellow]Bước 6/10: Ghi script sinh test và nạp {len(gen_code.tests)} tests chia subtask...[/bold yellow]"):
-                        self.polygon_auto.setup_test_script_and_tests(problem_id, problem_data, gen_code)
-                    console.print(f"  [green]✓[/green] Bước 6: Đã lưu Test Script và nạp đầy đủ {len(gen_code.tests)} tests.")
-
-                    # ==================== BƯỚC 7: COMMIT CHANGES ====================
-                    with console.status("[bold yellow]Bước 7/10: Commit working copy trên Polygon...[/bold yellow]"):
-                        self.polygon_auto.commit_changes(
-                            problem_id,
-                            f"Auto-commit: added statement, checker, generator, solution MA, and test script with {len(gen_code.tests)} tests",
-                        )
-                    console.print("  [green]✓[/green] Bước 7: Commit changes thành công.")
-
-                    # ==================== BƯỚC 8: PACKAGES & AUTO-REPAIR ====================
-                    if self.config.generation.auto_package:
-                        with console.status("[bold yellow]Bước 8/10: Yêu cầu Polygon build Full Package & verify (kèm Auto-Repair)...[/bold yellow]"):
-                            pkg_res = self.polygon_auto.build_and_wait_package(
-                                problem_id,
-                                timeout_sec=90,
-                                poll_interval=4,
-                                problem=problem_data,
-                                code=gen_code,
-                                ai_pipeline=self.ai_pipeline,
-                            )
-                            record.package_id = pkg_res.get("id")
-                            record.package_state = pkg_res.get("state", "BUILDING")
-                            if record.package_state == "FAILED":
-                                record.status = "FAILED"
-                                record.error_message = pkg_res.get("error_message") or f"Polygon package build failed on package {record.package_id}."
-                                console.print(f"  [bold red]❌ Bước 8 Thất bại: Package FAILED[/bold red] (Package ID: {record.package_id}) - {record.error_message}")
-                            else:
-                                record.status = "SUCCESS"
-                                console.print(f"  [green]✓[/green] Bước 8: Trạng thái Package: [bold green]{record.package_state}[/bold green] (Package ID: {record.package_id or 'queued'})")
-                    else:
-                        record.status = "SUCCESS"
-                        console.print("  [dim]Bước 8: Bỏ qua build package theo cấu hình.[/dim]")
-
-                    # ==================== BƯỚC 9: CHỈNH MANAGE ACCESS ====================
-                    if self.config.generation.auto_grant_access_to_codeforces:
-                        with console.status("[bold yellow]Bước 9/10: Phân quyền truy cập cho user 'codeforces'...[/bold yellow]"):
-                            self.polygon_auto.grant_access_to_codeforces(problem_id)
-                        console.print("  [green]✓[/green] Bước 9: Đã phân quyền chia sẻ cho user 'codeforces'.")
-
-                    # ==================== BƯỚC 10: TRẢ VỀ LINK BÀI HOÀN CHỈNH ====================
-                    subtasks_summary = ", ".join([f"Subtask {s.subtask_id} ({s.points} pts: {s.test_count} tests)" for s in problem_data.subtasks])
-                    record.subtasks_summary = subtasks_summary
-
-                    if record.status == "SUCCESS":
-                        console.print(f"\n[bold green]🎉 Bước 10: HOÀN TẤT BÀI TẬP: {problem_data.title}[/bold green]")
-                        console.print(Panel(
-                            f"[bold white]Link Nhập Codeforces (CF Import URL):[/bold white]\n"
-                            f"[bold yellow]{record.cf_import_url}[/bold yellow]\n\n"
-                            f"[bold white]Link Quản Trị Polygon:[/bold white]\n"
-                            f"[cyan]{record.url}[/cyan]\n\n"
-                            f"[dim]Tổng số tests: {record.total_tests} | Subtasks: {subtasks_summary}[/dim]",
-                            title="🔗 KẾT QUẢ XUẤT BÀI HOÀN CHỈNH",
-                            border_style="bright_green",
-                        ))
-                    break
-
-                except Exception as ex:
-                    if upload_attempt < max_upload_retries:
-                        console.print(f"[bold yellow]⚠️ Lượt {upload_attempt} gián đoạn do sự cố Polygon: {ex}. Tự động thử lại sau 10s...[/bold yellow]")
-                        time.sleep(10)
-                        continue
-                    else:
-                        raise
-
-        except Exception as e:
-            record.status = "FAILED"
-            record.error_message = str(e)
-            console.print(f"\n[bold red]❌ Lỗi trong quá trình xử lý:[/bold red] {e}")
-
-        # Update Excel Summary
-        try:
-            excel_file = self.exporter.export_records([record])
-            console.print(f"[dim]📁 Đã cập nhật vào file Excel: {excel_file}[/dim]")
-        except Exception as ex:
-            console.print(f"[yellow]⚠️ Lỗi cập nhật Excel: {ex}[/yellow]")
-
-        # Send Notifications
-        try:
-            self.notifier.notify_problem_completed(record)
-        except Exception:
-            pass
-
+        excel_path = Path(self.config.export.excel_file_path).resolve()
+        console.print(f"[dim]📁 File Excel tổng hợp: {excel_path}[/dim]")
         return record
 
     def batch_process(self) -> None:
@@ -412,16 +278,20 @@ class AutoUploaderCLI:
             self.print_banner()
             console.print("[bold yellow]MENU CHÍNH:[/bold yellow]")
             console.print("  [bold cyan][1][/bold cyan] Nhập 1 đường link bài tập (Single URL)")
-            console.print("  [bold cyan][2][/bold cyan] Xử lý hàng loạt từ danh sách link (Batch URLs)")
-            console.print("  [bold cyan][3][/bold cyan] Xem danh sách bài trên Polygon & Xuất Excel")
-            console.print("  [bold cyan][4][/bold cyan] Kiểm tra kết nối Polygon & Gemini API")
-            console.print("  [bold cyan][5][/bold cyan] Thoát")
+            console.print("  [bold cyan][2][/bold cyan] Nạp bài từ File cục bộ (PDF / Ảnh / TXT)")
+            console.print("  [bold cyan][3][/bold cyan] Xử lý hàng loạt từ danh sách link (Batch URLs)")
+            console.print("  [bold cyan][4][/bold cyan] Xem danh sách bài trên Polygon & Xuất Excel")
+            console.print("  [bold cyan][5][/bold cyan] Khởi chạy Web Dashboard (http://127.0.0.1:8080)")
+            console.print("  [bold cyan][6][/bold cyan] Cấu hình nhanh (Ngôn ngữ VI/EN/Song ngữ, File I/O, Điểm)")
+            console.print("  [bold cyan][7][/bold cyan] Kiểm tra kết nối Polygon & Gemini API")
+            console.print("  [bold cyan][8][/bold cyan] Thoát")
 
-            choice = Prompt.ask("\nChọn chức năng", choices=["1", "2", "3", "4", "5"], default="1")
+            choice = Prompt.ask("\nChọn chức năng", choices=["1", "2", "3", "4", "5", "6", "7", "8"], default="1")
 
-            if choice == "1":
-                url = Prompt.ask("\n[bold green]Nhập đường link bài tập[/bold green]").strip()
-                if url:
+            if choice in ("1", "2"):
+                prompt_label = "\n[bold green]Nhập đường link bài tập[/bold green]" if choice == "1" else "\n[bold green]Nhập đường dẫn file cục bộ (.pdf, .png, .jpg, .txt)[/bold green]"
+                src = Prompt.ask(prompt_label).strip().strip('"').strip("'")
+                if src:
                     num_tests_input = Prompt.ask(
                         "[bold cyan]Nhập số lượng test cần sinh (chia theo subtask)[/bold cyan]",
                         default=str(self.config.generation.num_tests),
@@ -430,14 +300,28 @@ class AutoUploaderCLI:
                         num_tests = int(num_tests_input)
                     except Exception:
                         num_tests = self.config.generation.num_tests
-                    self.process_single_url(url, num_tests=num_tests)
+                    self.process_single_url(src, num_tests=num_tests)
                     Prompt.ask("\nNhấn [bold green]Enter[/bold green] để quay lại menu")
-            elif choice == "2":
-                self.batch_process()
             elif choice == "3":
-                self.view_polygon_problems()
+                self.batch_process()
             elif choice == "4":
-                self.test_connections()
+                self.view_polygon_problems()
             elif choice == "5":
+                from ui.web_app import start_web_dashboard
+                console.print("[bold green]Đang mở Web Dashboard tại http://127.0.0.1:8080 ... (Nhấn Ctrl+C để dừng)[/bold green]")
+                start_web_dashboard(port=8080, open_browser=True)
+            elif choice == "6":
+                lang = Prompt.ask("Ngôn ngữ Statement", choices=["both", "vi", "en", "auto"], default=self.config.generation.statement_lang)
+                self.config.generation.statement_lang = lang
+                fio = Confirm.ask("Bật chế độ đọc/ghi qua file <ten_bai>.inp / .out?", default=self.config.generation.use_file_io)
+                self.config.generation.use_file_io = fio
+                pol = Prompt.ask("Chế độ tính điểm Subtask", choices=["EACH_TEST", "COMPLETE_GROUP"], default=self.config.generation.points_policy)
+                self.config.generation.points_policy = pol
+                console.print("[green]✓ Đã cập nhật cấu hình cho phiên làm việc hiện tại.[/green]")
+                time.sleep(1)
+            elif choice == "7":
+                self.test_connections()
+                Prompt.ask("\nNhấn [bold green]Enter[/bold green] để quay lại menu")
+            elif choice == "8":
                 console.print("[bold cyan]Tạm biệt và chúc bạn một ngày làm việc hiệu quả! 👋[/bold cyan]")
                 break

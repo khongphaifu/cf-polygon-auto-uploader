@@ -21,13 +21,13 @@ class GenericScraper(BaseScraper):
         if main_tags:
             # Pick the container with the largest text
             best_tag = max(main_tags, key=lambda t: len(t.get_text()))
-            text = best_tag.get_text("\n", strip=True)
+            text = self.clean_html_preserve_math(best_tag)
             if len(text) > 100:
                 return text
 
         # Fallback to body
         body = soup.find("body")
         if body:
-            return body.get_text("\n", strip=True)
+            return self.clean_html_preserve_math(body)
 
-        return soup.get_text("\n", strip=True)
+        return self.clean_html_preserve_math(soup)

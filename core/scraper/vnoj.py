@@ -78,10 +78,10 @@ class VNOJScraper(BaseScraper):
         # VNOJ task content is typically inside div with class "content-description" or "problem-body"
         problem_content = soup.find("div", class_="problem-body") or soup.find("div", class_="content-description")
         if problem_content:
-            return problem_content.get_text("\n", strip=True)
+            return self.clean_html_preserve_math(problem_content)
 
         main_content = soup.find("main") or soup.find("div", id="content")
         if main_content:
-            return main_content.get_text("\n", strip=True)
+            return self.clean_html_preserve_math(main_content)
 
-        return soup.get_text("\n", strip=True)
+        return self.clean_html_preserve_math(soup)

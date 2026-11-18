@@ -205,10 +205,11 @@ class PolygonClient:
         legend: str = "",
         input_format: str = "",
         output_format: str = "",
+        scoring: str = "",
         notes: str = "",
         tutorial: str = "",
     ) -> None:
-        """Save problem statement."""
+        """Save problem statement including dedicated scoring section."""
         params = {
             "problemId": problem_id,
             "lang": lang,
@@ -217,6 +218,7 @@ class PolygonClient:
             "legend": legend,
             "input": input_format,
             "output": output_format,
+            "scoring": scoring,
             "notes": notes,
             "tutorial": tutorial,
         }
@@ -387,6 +389,34 @@ class PolygonClient:
             "testset": testset,
             "enable": "true" if enable else "false",
         })
+
+    def view_test_groups(self, problem_id: int, testset: str = "tests") -> List[Dict[str, Any]]:
+        """View configured test groups for a testset."""
+        return self.request("problem.viewTestGroup", {
+            "problemId": problem_id,
+            "testset": testset,
+        }) or []
+
+    def save_test_group(
+        self,
+        problem_id: int,
+        group: str,
+        testset: str = "tests",
+        points_policy: str = "EACH_TEST",
+        feedback_policy: str = "POINTS",
+        dependencies: Optional[List[str]] = None,
+    ) -> None:
+        """Save points/feedback policy for a test group on Polygon."""
+        params: Dict[str, Any] = {
+            "problemId": problem_id,
+            "testset": testset,
+            "group": group,
+            "pointsPolicy": points_policy,
+            "feedbackPolicy": feedback_policy,
+        }
+        if dependencies:
+            params["dependencies"] = ",".join(dependencies)
+        self.request("problem.saveTestGroup", params)
 
     def get_script(self, problem_id: int, testset: str = "tests") -> Optional[str]:
         """Get test generator script."""

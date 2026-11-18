@@ -17,12 +17,12 @@ class AtCoderScraper(BaseScraper):
         if task_statement:
             en_section = task_statement.find("span", class_="lang-en")
             if en_section:
-                return en_section.get_text("\n", strip=True)
-            return task_statement.get_text("\n", strip=True)
+                return self.clean_html_preserve_math(en_section)
+            return self.clean_html_preserve_math(task_statement)
             
         # Fallback to main container
         main_container = soup.find("div", id="main-container")
         if main_container:
-            return main_container.get_text("\n", strip=True)
+            return self.clean_html_preserve_math(main_container)
             
-        return soup.get_text("\n", strip=True)
+        return self.clean_html_preserve_math(soup)

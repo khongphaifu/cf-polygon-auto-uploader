@@ -1,143 +1,243 @@
 """System prompts and prompt templates for AI Problem Engine."""
 
-PARSE_PROBLEM_PROMPT = """You are an International Grandmaster Competitive Programmer and chief Polygon Problem Setter.
-Your task is to analyze the following problem webpage content and extract/reformat it into a beautiful, professional Polygon problem statement with standard LaTeX math.
+POLYGON_LATEX_RULES = """CRITICAL POLYGON LATEX & FORMATTING RULES (STRICTLY ENFORCED):
+0. STRICT FAITHFULNESS (NEVER HALLUCINATE OR ALTER SAMPLES):
+   - Keep the EXACT original problem title (e.g., if the document title is "ACCEPTED", return `"title": "ACCEPTED"` and `"short_name": "accepted"`). Do NOT rename the problem to a generic description.
+   - Transcribe ALL `sample_tests` (`input_text` and `output_text`) CHARACTER-FOR-CHARACTER VERBATIM from the source! NEVER recalculate, guess, or alter any sample input or sample output number.
+   - Preserve the EXACT problem mechanics and rules (e.g., if draws are random and the question asks for maximum possible score difference, keep that exact rule instead of assuming optimal adversary turns).
+1. NO MARKDOWN HEADERS OR RAW HTML + JSON ESCAPING:
+   - NEVER use `#`, `##`, `###` (causes Polygon TeX compilation failure!) or `**bold**` or `*italic*`.
+   - Use LaTeX commands instead: `\\textbf{...}`, `\\textit{...}`, `\\texttt{...}`.
+   - In JSON string values, ALWAYS double-escape backslashes (`\\\\textbf`, `\\\\begin`, `\\\\tabular`, `\\\\times`, `\\\\bmod`) so JSON parsing does NOT turn `\\t` into TAB or `\\b` into backspace!
+   - NEVER leave raw HTML tags (`<sup>`, `<sub>`, `<div>`, `<p>`, `<br>`, `&le;`, `&ge;`). Convert them to pure LaTeX math.
+2. LATEX MATH & SPECIAL CHARACTERS:
+   - Enclose all math variables, bounds, numbers in constraints, and complexity formulas in single dollar signs `$...$` (e.g., `$N$`, `$a_1, a_2, \\dots, a_n$`, `$1 \\le N \\le 10^5$`, `$10^9 + 7$`, `$\\mathcal{O}(N \\log N)$`).
+   - ALWAYS escape literal percent signs as `\\%` (NEVER write bare `%`, because TeX treats `%` as a line comment and deletes the rest of the line!).
+   - Use double newlines `\\n\\n` between paragraphs (Polygon merges single newlines).
+   - For bulleted lists, ALWAYS use `\\begin{itemize}` and `\\end{itemize}` with `\\item ...`.
+   - Quote strings properly using `` ``abc'' `` or `\\texttt{"abc"}`.
+3. AUTHENTIC USER POLYGON STYLE (LEARNED FROM PROBLEMS tqt, nak, lit):
+   - In Vietnamese `legend_vi`:
+     * End the problem statement clearly with `\\textbf{Yêu cầu:} ...` summarizing the exact task.
+     * If a secondary mathematical/problem term needs clarification (e.g. contiguous subarray, divisor), add a horizontal rule and footnote at the bottom of `legend_vi`:
+       `\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_` followed by blank line and `{\\small $*$ Định nghĩa chi tiết...}`.
+   - In `input_format_vi` / `output_format_vi`:
+     * Describe each line cleanly: e.g., `Dòng đầu tiên gồm hai số nguyên dương $N, K$ $(1 \\le N, K \\le 10^5)$.`
+     * Do NOT hardcode file names (like `BAI.INP`/`BAI.OUT`) unless explicitly requested; use standard input/output descriptions.
+   - In `notes_vi`:
+     * Present sample explanation starting with `Ở test ví dụ thứ nhất:` followed by `\\begin{itemize}\\n\\item ...\\n\\end{itemize}` if helpful.
+     * Do NOT put the Subtask table inside `notes_vi` or `notes_en` — the Subtask table MUST go into the dedicated `scoring_vi` and `scoring_en` fields!
+   - In `scoring_vi` and `scoring_en` (Polygon dedicated Scoring box):
+     * Format strictly as a centered LaTeX tabular:
+       ```latex
+       \\begin{center}
+       \\begin{tabular}{|c|c|c|}
+       \\hline
+       \\textbf{Subtask} & \\textbf{Điểm} & \\textbf{Giới hạn} \\\\
+       \\hline
+       1 & 30 & $N \\le 100$ \\\\
+       \\hline
+       2 & 30 & $N \\le 2000$ \\\\
+       \\hline
+       3 & 40 & Không có ràng buộc gì thêm \\\\
+       \\hline
+       \\end{tabular}
+       \\end{center}
+       ```
+       (Use `\\textbf{Subtask} & \\textbf{Points} & \\textbf{Constraints}` and `No additional constraints` for `scoring_en`).
+   - In `tutorial_vi` / `tutorial_en`:
+     * Write clear Polygon LaTeX using `\\textbf{Thuật toán:}` and `\\textbf{Độ phức tạp:}` (`$\\mathcal{O}(...)$`), NEVER `###`.
+4. SUBTASKS DIVISION (TOTAL 100 POINTS):
+   - Check if the original problem defines subtasks. If yes, extract them accurately.
+   - If the original problem has NO subtasks, divide cleanly into 3 standard competitive programming subtasks summing to 100 points (30, 30, 40):
+     * Subtask 1 (30 points): Small limits (`$N \\le 100$` or appropriate small bound for brute force).
+     * Subtask 2 (30 points): Medium limits (`$N \\le 2000$` or appropriate intermediate bound).
+     * Subtask 3 (40 points): Full limits (No additional constraints / Không có ràng buộc gì thêm).
+5. BILINGUAL OUTPUT:
+   - Return BOTH accurate Vietnamese fields (`*_vi`) and fluent English fields (`*_en`) in JSON so Polygon can publish either or both versions seamlessly!"""
 
-CRITICAL FORMATTING GUIDELINES FOR STATEMENT:
-1. LaTeX Math:
-   - Use standard single dollar `$var$` or triple dollar `$$$var$$$` for all math variables, formulas, bounds, and indices (e.g. `$n$`, `$a_1, a_2, \\dots, a_n$`, `$1 \\le n \\le 2 \\cdot 10^5$`, `$10^{18}$`).
-   - Use proper LaTeX symbols: `\\le`, `\\ge`, `\\neq`, `\\dots`, `\\times`, `\\bmod`, `\\gcd`, `\\oplus` (XOR), `\\mathcal{O}(n \\log n)`.
-   - Never leave raw HTML tags (like <sup>, <sub>, <div>, <p>, &le;) in the text. Convert everything to clean LaTeX / Markdown.
-2. Polygon Paragraphs & Lists (CRITICAL FOR NOTES & STATEMENT BEAUTY):
-   - Polygon uses TeX rendering where single newlines are merged into a single paragraph!
-   - To separate paragraphs, ALWAYS use double newlines (`\\n\\n`).
-   - For bulleted lists in `legend`, `input_format`, `output_format`, or `notes`, ALWAYS use LaTeX itemize:
-     ```latex
-     In the first example:
-     \\begin{itemize}
-         \\item The word \\texttt{"word"} has length $4 \\le 10$, so it is printed without changes.
-         \\item The word \\texttt{"localization"} has length $12 > 10$. It starts with \\texttt{'l'} and ends with \\texttt{'n'} with $12 - 2 = 10$ letters between them, so it is replaced by \\texttt{"l10n"}.
-     \\end{itemize}
-     ```
-   - For numbered lists, use `\\begin{enumerate} \\item ... \\end{enumerate}`.
-   - For code, strings, or characters, use `\\texttt{"abc"}` or `\\texttt{'c'}`.
-3. Structure:
-   - `legend`: The problem story/background, clearly articulated with clean paragraphs separated by double newlines. Do NOT include input/output sections here.
-   - `input_format`: Crystal-clear specification of each line of the input. State clearly if there are multiple test cases ($t$) and the sum of constraints.
-   - `output_format`: Crystal-clear specification of the output for each test case or query.
-   - `constraints`: A concise, complete summary of all variable bounds.
-   - `notes`: A beautifully formatted step-by-step explanation using `\\begin{itemize} \\item ... \\end{itemize}` with clear math formulas.
-   - `tutorial`: A complete, comprehensive, and beautiful Editorial / Tutorial written in Polygon LaTeX explaining the key observations, algorithmic solution, mathematical proof, and time/space complexity analysis (e.g. $\\mathcal{O}(n \\log n)$).
-4. Subtasks Identification & Division (CRITICAL FOR OLYMPIAD & SUBTASK GRADING):
-   - Check if the original problem specifies subtasks (e.g. Subtask 1: $N \\le 100$ [30%], Subtask 2: $N \\le 2000$ [30%], Subtask 3: $N \\le 2 \\cdot 10^5$ [40%]).
-   - If subtasks exist: Extract them accurately into the `subtasks` array.
-   - If the original problem does NOT have subtasks: Intelligently create 3 standard competitive programming subtasks:
-     * Subtask 1 (30 points): Small constraints / Brute-force ($N \\le 100$, small values, $\\mathcal{O}(N^2)$ or brute force).
-     * Subtask 2 (30 points): Medium constraints / Tricky boundary edge cases & 32-bit overflow ($N \\le 2000$, $\\mathcal{O}(N^2)$, $10^9$ values).
-     * Subtask 3 (40 points): Full constraints / Maximum scale & stress test ($N = N_{\\max}$, $\\sum N = \\text{SumMax}$, $\\mathcal{O}(N \\log N)$ or $\\mathcal{O}(N)$).
-   - In `notes` or `legend`, always append a cleanly formatted Subtask table using LaTeX:
-     ```latex
-     \\textbf{Subtasks:}
-     \\begin{itemize}
-         \\item Subtask 1 (30 points): $n \\le 100$.
-         \\item Subtask 2 (30 points): $n \\le 2000$.
-         \\item Subtask 3 (40 points): No additional constraints.
-     \\end{itemize}
-     ```
-5. Checker Selection:
-   - Choose the exact matching checker: "std::wcmp.cpp" (tokens), "std::ncmp.cpp" (integers), "std::rcmp6.cpp" (float 10^-6), "std::rcmp9.cpp" (float 10^-9), "std::yesno.cpp" (YES/NO), "std::lcmp.cpp" (lines), or "custom".
 
-Return ONLY a valid JSON object with the following fields:
-{
-  "title": "Problem Title in English",
-  "short_name": "short-problem-name-lowercase-hyphenated",
+PARSE_PROBLEM_PROMPT = f"""You are an International Grandmaster Competitive Programmer and chief Polygon Problem Setter.
+Analyze the following problem webpage content and extract/reformat it into BOTH clean Vietnamese (`*_vi`) and English (`*_en`) Polygon statements following strict Polygon LaTeX standards.
+
+{POLYGON_LATEX_RULES}
+
+CHECKER SELECTION:
+- Choose the exact matching Polygon standard checker:
+  * "std::wcmp.cpp" (whitespace-separated tokens/words/integers/yes-no - safest default for multi-test outputs)
+  * "std::ncmp.cpp" (strict integer sequence)
+  * "std::rcmp6.cpp" or "std::rcmp9.cpp" (floating point 10^-6 or 10^-9)
+  * "std::lcmp.cpp" (line-by-line comparison)
+  * "custom" (only if multiple valid answers require a custom checker)
+
+Return ONLY a valid JSON object with the exact schema below:
+{{
+  "title": "EXACT Original Problem Title (e.g. ACCEPTED)",
+  "short_name": "exact-lowercase-ascii-slug-from-original-title",
   "time_limit_ms": 1000,
   "memory_limit_mb": 256,
-  "legend": "Detailed problem description...",
-  "input_format": "Detailed input format specification...",
-  "output_format": "Detailed output format specification...",
-  "constraints": "Summary of all variable constraints...",
-  "notes": "In the first example:\\n\\\\begin{itemize}\\n    \\\\item Explanation 1...\\n    \\\\item Explanation 2...\\n\\\\end{itemize}\\n\\n\\\\textbf{Subtasks:}\\n\\\\begin{itemize}\\n    \\\\item Subtask 1 (30 points): $n \\\\le 100$.\\n    \\\\item Subtask 2 (30 points): $n \\\\le 2000$.\\n    \\\\item Subtask 3 (40 points): No additional constraints.\\n\\\\end{itemize}",
-  "tutorial": "### Method Explanation\\n\\nTo solve this problem optimally, observe that...\\n\\n### Complexity\\n- Time Complexity: $\\\\mathcal{O}(n \\\\log n)$\\n- Space Complexity: $\\\\mathcal{O}(n)$",
+  "constraints": "Concise summary of all variable constraints",
   "checker_type": "std::wcmp.cpp",
+  "title_vi": "Tiêu đề Tiếng Việt",
+  "legend_vi": "Nội dung đề bài Tiếng Việt...\\n\\n\\textbf{{Yêu cầu:}} ...",
+  "input_format_vi": "Dòng đầu tiên gồm...",
+  "output_format_vi": "Một dòng duy nhất in ra...",
+  "scoring_vi": "\\begin{{center}}\\n\\begin{{tabular}}{{|c|c|c|}}\\n\\hline\\n\\textbf{{Subtask}} & \\textbf{{Điểm}} & \\textbf{{Giới hạn}} \\\\\\n\\hline\\n1 & 30 & $N \\\\le 100$ \\\\\\n\\hline\\n2 & 30 & $N \\\\le 2000$ \\\\\\n\\hline\\n3 & 40 & Không có ràng buộc gì thêm \\\\\\n\\hline\\n\\end{{tabular}}\\n\\end{{center}}",
+  "notes_vi": "Ở test ví dụ thứ nhất:\\n\\n\\begin{{itemize}}\\n\\item Giải thích...\\n\\end{{itemize}}",
+  "tutorial_vi": "\\textbf{{Nhận xét và Thuật toán:}}\\n\\n...\\n\\n\\textbf{{Độ phức tạp:}}\\n\\begin{{itemize}}\\n\\item Thời gian: $\\\\mathcal{{O}}(N \\\\log N)$\\n\\item Bộ nhớ: $\\\\mathcal{{O}}(N)$\\n\\end{{itemize}}",
+  "title_en": "Problem Title in English",
+  "legend_en": "Detailed English problem statement...",
+  "input_format_en": "Detailed English input format...",
+  "output_format_en": "Detailed English output format...",
+  "scoring_en": "\\begin{{center}}\\n\\begin{{tabular}}{{|c|c|c|}}\\n\\hline\\n\\textbf{{Subtask}} & \\textbf{{Points}} & \\textbf{{Constraints}} \\\\\\n\\hline\\n1 & 30 & $N \\\\le 100$ \\\\\\n\\hline\\n2 & 30 & $N \\\\le 2000$ \\\\\\n\\hline\\n3 & 40 & No additional constraints \\\\\\n\\hline\\n\\end{{tabular}}\\n\\end{{center}}",
+  "notes_en": "In the first example:\\n\\n\\begin{{itemize}}\\n\\item Explanation...\\n\\end{{itemize}}",
+  "tutorial_en": "\\textbf{{Editorial:}}\\n\\n...\\n\\n\\textbf{{Complexity:}}\\n\\begin{{itemize}}\\n\\item Time: $\\\\mathcal{{O}}(N \\\\log N)$\\n\\item Space: $\\\\mathcal{{O}}(N)$\\n\\end{{itemize}}",
   "subtasks": [
-    {
+    {{
       "subtask_id": 1,
       "points": 30.0,
-      "description": "$n \\\\le 100$",
+      "description": "$N \\\\le 100$",
       "generator_args_hint": "small"
-    },
-    {
+    }},
+    {{
       "subtask_id": 2,
       "points": 30.0,
-      "description": "$n \\\\le 2000$",
+      "description": "$N \\\\le 2000$",
       "generator_args_hint": "medium_overflow"
-    },
-    {
+    }},
+    {{
       "subtask_id": 3,
       "points": 40.0,
       "description": "No additional constraints",
       "generator_args_hint": "max_stress"
-    }
+    }}
   ],
   "sample_tests": [
-    {
+    {{
       "input_text": "3\\n1 2 3\\n",
       "output_text": "6\\n",
       "explanation": "Sum is $1 + 2 + 3 = 6$."
-    }
+    }}
   ]
-}
+}}
 
 Original Webpage / Problem Content:
 --------------------
-{raw_content}
+{{raw_content}}
 --------------------
 """
 
+
+PARSE_IMAGE_PROMPT = f"""You are an International Grandmaster Competitive Programmer and chief Polygon Problem Setter.
+Analyze the provided PDF document or image of a competitive programming problem carefully (statement, formulas, limits, constraints, sample tests, and subtasks).
+Extract and translate/format it into BOTH clean Vietnamese (`*_vi`) and English (`*_en`) Polygon statements following strict Polygon LaTeX standards.
+
+{POLYGON_LATEX_RULES}
+
+CHECKER SELECTION:
+- Choose the exact matching Polygon standard checker: "std::wcmp.cpp", "std::ncmp.cpp", "std::rcmp6.cpp", "std::rcmp9.cpp", "std::lcmp.cpp", or "custom".
+
+Return ONLY a valid JSON object with the exact schema:
+{{
+  "title": "EXACT Original Problem Title (e.g. ACCEPTED)",
+  "short_name": "exact-lowercase-ascii-slug-from-original-title",
+  "time_limit_ms": 1000,
+  "memory_limit_mb": 256,
+  "constraints": "Summary of all variable constraints",
+  "checker_type": "std::wcmp.cpp",
+  "title_vi": "Tiêu đề Tiếng Việt",
+  "legend_vi": "Nội dung đề bài Tiếng Việt...\\n\\n\\textbf{{Yêu cầu:}} ...",
+  "input_format_vi": "Dòng đầu tiên gồm...",
+  "output_format_vi": "Một dòng duy nhất in ra...",
+  "scoring_vi": "\\begin{{center}}\\n\\begin{{tabular}}{{|c|c|c|}}\\n\\hline\\n\\textbf{{Subtask}} & \\textbf{{Điểm}} & \\textbf{{Giới hạn}} \\\\\\n\\hline\\n1 & 30 & $N \\\\le 100$ \\\\\\n\\hline\\n2 & 30 & $N \\\\le 2000$ \\\\\\n\\hline\\n3 & 40 & Không có ràng buộc gì thêm \\\\\\n\\hline\\n\\end{{tabular}}\\n\\end{{center}}",
+  "notes_vi": "Ở test ví dụ thứ nhất:\\n\\n\\begin{{itemize}}\\n\\item Giải thích...\\n\\end{{itemize}}",
+  "tutorial_vi": "\\textbf{{Nhận xét và Thuật toán:}}\\n\\n...",
+  "title_en": "Problem Title in English",
+  "legend_en": "Detailed English problem statement...",
+  "input_format_en": "Detailed English input format...",
+  "output_format_en": "Detailed English output format...",
+  "scoring_en": "\\begin{{center}}\\n\\begin{{tabular}}{{|c|c|c|}}\\n\\hline\\n\\textbf{{Subtask}} & \\textbf{{Points}} & \\textbf{{Constraints}} \\\\\\n\\hline\\n1 & 30 & $N \\\\le 100$ \\\\\\n\\hline\\n2 & 30 & $N \\\\le 2000$ \\\\\\n\\hline\\n3 & 40 & No additional constraints \\\\\\n\\hline\\n\\end{{tabular}}\\n\\end{{center}}",
+  "notes_en": "In the first example:\\n\\n\\begin{{itemize}}\\n\\item Explanation...\\n\\end{{itemize}}",
+  "tutorial_en": "\\textbf{{Editorial:}}\\n\\n...",
+  "subtasks": [
+    {{
+      "subtask_id": 1,
+      "points": 30.0,
+      "description": "$N \\\\le 100$",
+      "generator_args_hint": "small"
+    }},
+    {{
+      "subtask_id": 2,
+      "points": 30.0,
+      "description": "$N \\\\le 2000$",
+      "generator_args_hint": "medium"
+    }},
+    {{
+      "subtask_id": 3,
+      "points": 40.0,
+      "description": "No additional constraints",
+      "generator_args_hint": "max"
+    }}
+  ],
+  "sample_tests": [
+    {{
+      "input_text": "3\\n1 2 3\\n",
+      "output_text": "6\\n",
+      "explanation": "Explanation..."
+    }}
+  ]
+}}
+"""
+
+
 GENERATE_CODE_PROMPT = """You are an International Grandmaster Competitive Programmer and chief Polygon Problem Setter.
 Analyze the problem details carefully and implement:
-1. The single MAIN, OPTIMAL, and 100% CORRECT C++20 solution (`solution_cpp`).
+1. The single MAIN, OPTIMAL, and 100% CORRECT C++20/C++23 solution (`solution_cpp`) that passes ALL sample tests and ALL constraints cleanly.
 2. A high-quality test generator C++ (`generator_cpp`) using `testlib.h`.
-3. A Polygon Test Script (`test_script_lines`) that calls the generator to produce EXACTLY {num_tests} tests distributed across the defined subtasks.
+3. A strict `testlib.h` input validator (`validator_cpp`) validating the full problem input format and full constraints.
+4. A Polygon Test Script (`test_script_lines`) that calls the generator to produce EXACTLY {num_tests} distinct tests distributed across the defined subtasks.
 
 CRITICAL REQUIREMENTS FOR MAIN SOLUTION (`solution_cpp`):
 1. Algorithmic Perfection:
-   - Must use the optimal algorithm (e.g. DP, Greedy with proof, Segment Tree/Fenwick, Binary Search, Graph BFS/Dijkstra/DSU, Math/Number Theory, Two Pointers).
+   - Double-check your solution logic against EVERY Sample Test below before outputting!
    - Time Complexity: Strictly $\\mathcal{O}(N)$, $\\mathcal{O}(N \\log N)$, or $\\mathcal{O}(\\log N) / \\mathcal{O}(1)$ for math. NEVER use naive $\\mathcal{O}(N^2)$ if $N > 2000$.
    - Space Complexity: Strictly within the memory limit.
 2. Robustness & Overflow Safety:
-   - Prevent 32-bit integer overflow: ALWAYS use `long long` (or `int64_t`) for variables, sums, products, prefix sums, and DP states whenever values can exceed $2 \\cdot 10^9$.
-   - Fast I/O: ALWAYS include:
+   - Prevent 32-bit integer overflow: ALWAYS use `long long` for sums, products, DP states, and values that can exceed $2 \\cdot 10^9$.
+   - Fast I/O:
      ```cpp
      ios_base::sync_with_stdio(false);
      cin.tie(NULL);
      ```
-   - Standard headers: Use `#include <bits/stdc++.h>` and `using namespace std;`.
-   - Correct handling of multi-testcase $t$: Read $t$ first if input format specifies multi-testcase ($t$), and reset global data/vectors between test cases.
+   - Standard headers: `#include <bits/stdc++.h>` and `using namespace std;`.
+   - Support reading from `stdin` and writing to `stdout` (unless file I/O is handled externally).
 
 CRITICAL REQUIREMENTS FOR GENERATOR (`generator_cpp`):
-1. Use `testlib.h` with `registerGen(argc, argv, 1);`.
-2. Generator must parse arguments from command line:
-   - `int subtask = opt<int>(1, 1);` or `atoi(argv[1])`: Subtask ID (1, 2, 3...).
-   - `int seed = opt<int>(2, 1);` or `atoi(argv[2])`: Seed for variety.
-   - Additional arguments (optional, e.g. scale, type_flag).
-3. The generator MUST strictly respect the constraints of each subtask:
-   - Subtask 1: Small limits ($N \\le 100$), minimal values, brute-force boundary.
-   - Subtask 2: Medium limits ($N \\le 2000$), corner cases, 32-bit overflow values ($> 2 \\cdot 10^9$), alternating patterns.
-   - Subtask 3: Full limits ($N = N_{\\max}$), maximum sum, dense graph, stress tests.
-4. Output must match the EXACT `Input Format` of the problem (including $t$ if multi-testcase).
-5. Must compile cleanly with standard C++17/C++20 and testlib.h without any undefined behavior.
+1. Use `#include "testlib.h"` with `registerGen(argc, argv, 1);`.
+2. Parse command-line arguments:
+   - `int subtask = opt<int>(1, 1);` (or `atoi(argv[1])`): Subtask ID (1, 2, 3...).
+   - `int seed = opt<int>(2, 100);` (or `atoi(argv[2])`): Unique seed so every call produces a DIFFERENT test input!
+   - Ensure `rnd.setSeed(seed);` is NOT needed if arguments vary (`registerGen(argc, argv, 1)` seeds from all argv automatically), so ALWAYS vary generated values using `rnd.next(...)`!
+3. Strictly respect the constraints of each subtask (Subtask 1 small, Subtask 2 medium, Subtask 3 full/max limits).
+4. Match the exact Input Format (do not add trailing spaces, end each line with `\\n`).
+
+CRITICAL REQUIREMENTS FOR VALIDATOR (`validator_cpp`):
+1. Use `#include "testlib.h"` with `registerValidation(argc, argv);`.
+2. Read the entire input strictly matching the Input Format (`inf.readInt(...)`, `inf.readSpace()`, `inf.readEoln()`, `inf.readEof()`).
+3. Validate the FULL problem constraints (do not fail on Subtask 1 vs Subtask 3 differences unless validating full bounds) and allow clean whitespace (`inf.readSpace()` between tokens, `inf.readEoln()` at line end, `inf.readEof()` at EOF).
 
 CRITICAL REQUIREMENTS FOR TEST SCRIPT (`test_script_lines`):
-1. Each line is a Polygon script directive:
-   - To set group: `> group 1`
-   - To generate test: `gen 1 101 min > $`
-   - For subtask 2: `> group 2` then `gen 2 201 mid > $`
-   - For subtask 3: `> group 3` then `gen 3 301 max > $`
-2. Total tests generated across all groups must be EXACTLY {num_tests}.
+1. Each line specifies group and generator invocation:
+   - `> group sub1`
+   - `gen 1 101 min > $`
+   - `gen 1 102 rand > $`
+   - `> group sub2`
+   - `gen 2 201 mid > $`
+   - `> group sub3`
+   - `gen 3 301 max > $`
+2. Total generator lines across all subtasks must be EXACTLY {num_tests}, and every line must pass unique arguments/seeds so no two tests are identical!
 3. Distribute tests proportionally to the subtask points:
-   {subtasks_distribution_hint}
+{subtasks_distribution_hint}
 
 Problem Details:
 ----------------
@@ -159,18 +259,16 @@ Total Target Tests: {num_tests}
 
 Return ONLY a valid JSON object with the following schema:
 {
-  "solution_cpp": "/* 100% Optimal, Flawless C++20 Main Solution */",
+  "solution_cpp": "/* Optimal C++20/C++23 solution */",
   "generator_cpp": "/* testlib generator C++ code using testlib.h */",
+  "validator_cpp": "/* testlib validator C++ code using testlib.h */",
   "test_script_lines": [
-    "> group 1",
+    "> group sub1",
     "gen 1 101 min > $",
-    "gen 1 102 small > $",
-    "> group 2",
+    "> group sub2",
     "gen 2 201 mid > $",
-    "gen 2 202 overflow > $",
-    "> group 3",
-    "gen 3 301 max > $",
-    "gen 3 302 stress > $"
+    "> group sub3",
+    "gen 3 301 max > $"
   ],
   "checker_type": "{checker_type}",
   "custom_checker_cpp": null
@@ -208,11 +306,12 @@ Return ONLY a valid JSON object with the following schema:
 """
 
 FIX_CODE_PROMPT = """You are an International Grandmaster Competitive Programmer and chief Polygon Problem Setter.
-The previous solution, generator, or test script failed local verification or Polygon package build with the error described below.
+The previous solution, generator, validator, or test script failed local verification or Polygon package build with the error described below.
 Analyze the bug carefully and provide the fixed code.
 
 Problem Title: {title}
 Constraints: {constraints}
+Legend: {legend}
 Input Format: {input_format}
 Output Format: {output_format}
 Sample Tests: {sample_tests_json}
@@ -227,78 +326,31 @@ Current generator_cpp:
 {current_generator_cpp}
 ```
 
+Current validator_cpp:
+```cpp
+{current_validator_cpp}
+```
+
 Current script lines:
 {current_script_lines}
 
-Error Details / Compiler Output / Verification Failure:
+Error Details / Compiler Output / Sample Mismatch / Verification Failure:
 --------------------
 {error_details}
 --------------------
 
 Fix the bug completely.
-- If solution_cpp failed compilation or execution, fix solution_cpp.
-- If generator_cpp failed compilation or execution, fix generator_cpp.
-- If script lines were invalid, fix test_script_lines.
+- If `solution_cpp` failed compilation or failed a Sample Test, carefully trace the algorithm and fix `solution_cpp`.
+- If `generator_cpp` failed compilation or generated invalid/duplicate inputs, fix `generator_cpp`.
+- If `validator_cpp` failed compilation or rejected valid inputs, fix `validator_cpp`.
+- If script lines were invalid, fix `test_script_lines`.
 
 Return ONLY a valid JSON object with:
 {
-  "solution_cpp": "/* Fixed C++20 code, or null if untouched */",
+  "solution_cpp": "/* Fixed C++ code, or null if untouched */",
   "generator_cpp": "/* Fixed generator code, or null if untouched */",
+  "validator_cpp": "/* Fixed validator code, or null if untouched */",
   "test_script_lines": ["/* Fixed script lines, or null if untouched */"],
   "explanation": "Brief explanation of what was fixed"
-}
-"""
-
-PARSE_IMAGE_PROMPT = """You are an International Grandmaster Competitive Programmer and Polygon Problem Setter.
-Analyze the provided image of a competitive programming problem (statement, math formulas, constraints, input/output, sample tests, subtasks).
-Extract and structure all information into a flawless Codeforces/Polygon LaTeX format.
-
-Rules:
-1. Translate fully to English if the original image is in another language (Vietnamese, Russian, etc.).
-2. Math & Formulas: Enclose all inline math in $...$ (e.g. $n$, $1 \\le n \\le 10^5$, $\\sum a_i$).
-3. Notes: Format using \\begin{itemize} \\item ... \\end{itemize}.
-4. Subtasks: Identify or intelligently divide into 3 subtasks (30% small, 30% medium, 40% full constraints).
-5. Tutorial: Write a complete Editorial/Tutorial explaining the optimal algorithm and complexity \\mathcal{O}(\\dots).
-
-Return ONLY a valid JSON object with the following schema:
-{
-  "title": "Problem Title in English",
-  "short_name": "short-problem-name",
-  "time_limit_ms": 1000,
-  "memory_limit_mb": 256,
-  "legend": "Detailed problem description...",
-  "input_format": "Detailed input format specification...",
-  "output_format": "Detailed output format specification...",
-  "constraints": "Summary of all variable constraints...",
-  "notes": "\\begin{itemize}\\n    \\item Note 1...\\n\\end{itemize}\\n\\n\\textbf{Subtasks:}\\n\\begin{itemize}\\n    \\item Subtask 1 (30 points): $n \\le 100$.\\n    \\item Subtask 2 (30 points): $n \\le 2000$.\\n    \\item Subtask 3 (40 points): No additional constraints.\\n\\end{itemize}",
-  "tutorial": "### Method Explanation\\n\\n...\\n\\n### Complexity\\n- Time: $\\mathcal{O}(n)$",
-  "checker_type": "std::wcmp.cpp",
-  "subtasks": [
-    {
-      "subtask_id": 1,
-      "points": 30.0,
-      "description": "$n \\le 100$",
-      "generator_args_hint": "small"
-    },
-    {
-      "subtask_id": 2,
-      "points": 30.0,
-      "description": "$n \\le 2000$",
-      "generator_args_hint": "medium"
-    },
-    {
-      "subtask_id": 3,
-      "points": 40.0,
-      "description": "No additional constraints",
-      "generator_args_hint": "max"
-    }
-  ],
-  "sample_tests": [
-    {
-      "input_text": "3\\n1 2 3\\n",
-      "output_text": "6\\n",
-      "explanation": "Sum is 6."
-    }
-  ]
 }
 """
