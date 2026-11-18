@@ -364,7 +364,12 @@ class AIPipeline:
         code_prompt = code_prompt.replace("{num_tests}", str(num_tests))
         code_prompt = code_prompt.replace("{subtasks_distribution_hint}", subtasks_hint)
 
-        code_result = self.llm.generate_json(code_prompt)
+        try:
+            code_result = self.llm.generate_json(code_prompt)
+        except Exception as e:
+            raise RuntimeError(
+                f"Toàn bộ Gemini API key/model đều hết quota hoặc gặp lỗi khi sinh lời giải & test: {e}"
+            ) from e
 
         sol_cpp = self._sanitize_cpp_code(code_result.get("solution_cpp", ""), is_testlib=False)
         gen_cpp = self._sanitize_cpp_code(code_result.get("generator_cpp", ""), is_testlib=True)
@@ -401,6 +406,7 @@ class AIPipeline:
                 target_num_tests=num_tests,
                 points_policy=points_policy,
                 enable_validator=enable_validator,
+                allow_early_abort=(attempt < max_local_heal_attempts),
             )
             if not verifier.last_errors:
                 break

@@ -150,7 +150,7 @@ class LLMClient:
             payload["systemInstruction"] = {"parts": [{"text": system_instruction}]}
 
         last_error: Optional[Exception] = None
-        for current_key in self.api_keys_pool:
+        for current_key in list(self.api_keys_pool):
             for candidate_model in model_candidates:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{candidate_model}:generateContent?key={current_key}"
                 for attempt in range(1, max_retries_per_model + 1):
@@ -165,6 +165,10 @@ class LLMClient:
                             result = self._extract_and_parse_response(response)
                             if not model_override:
                                 self.model_name = candidate_model
+                            # Sticky rotation: promote working key to front for subsequent calls
+                            if current_key != self.api_keys_pool[0]:
+                                self.api_keys_pool = [current_key] + [k for k in self.api_keys_pool if k != current_key]
+                                self.api_key = current_key
                             return result
                         elif response.status_code in (429, 503):
                             last_error = RuntimeError(f"{candidate_model} returned HTTP {response.status_code} (busy/rate limit)")

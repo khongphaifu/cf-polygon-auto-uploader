@@ -110,8 +110,8 @@ class PolygonAutomation:
         return saved_langs
 
     # Step 3: Chọn Checker & Validator
-    def setup_checker(self, problem_id: int, code: GeneratedCode) -> None:
-        """Set standard checker or upload custom check.cpp."""
+    def setup_checker(self, problem_id: int, code: GeneratedCode, problem: Optional[ProblemData] = None) -> str:
+        """Set standard checker (upgrading yesno -> std::nyesno.cpp) or upload custom check.cpp."""
         if code.checker_type == "custom" and code.custom_checker_cpp:
             self._upload_with_compiler_fallback(
                 lambda st: self.client.save_file(
@@ -124,16 +124,25 @@ class PolygonAutomation:
                 )
             )
             self.client.set_checker(problem_id=problem_id, checker_name="check.cpp")
+            return "check.cpp"
+
+        checker = code.checker_type or "std::wcmp.cpp"
+        if "yesno" in checker.lower():
+            checker = "std::nyesno.cpp"
         else:
-            checker = code.checker_type or "std::wcmp.cpp"
-            if "yesno" in checker.lower():
-                checker = "std::lcmp.cpp"
-            elif not checker.startswith("std::"):
-                if not checker.endswith(".cpp"):
-                    checker = f"std::{checker}.cpp"
-                else:
-                    checker = f"std::{checker}"
-            self.client.set_checker(problem_id=problem_id, checker_name=checker)
+            if not checker.startswith("std::"):
+                checker = f"std::{checker}.cpp" if not checker.endswith(".cpp") else f"std::{checker}"
+            # Auto-upgrade to std::nyesno.cpp if all sample outputs are strictly YES/NO tokens
+            if problem and problem.sample_tests and checker in ("std::wcmp.cpp", "std::lcmp.cpp"):
+                sample_tokens = []
+                for s in problem.sample_tests:
+                    sample_tokens.extend((s.output_text or "").strip().split())
+                if sample_tokens and all(tok.upper() in ("YES", "NO") for tok in sample_tokens):
+                    checker = "std::nyesno.cpp"
+
+        self.client.set_checker(problem_id=problem_id, checker_name=checker)
+        code.checker_type = checker
+        return checker
 
     def setup_validator(self, problem_id: int, code: GeneratedCode, overwrite: bool = False) -> bool:
         """Upload validator.cpp if verified locally and register as problem validator."""
@@ -746,9 +755,9 @@ def run_upload_pipeline(
 
                 # Step 3: Checker & Validator
                 _log(f"Bước 3/10: Thiết lập Checker ({gen_code.checker_type}) & Validator...", "3/10 Checker & Validator", 58)
-                polygon_auto.setup_checker(problem_id, gen_code)
+                final_checker = polygon_auto.setup_checker(problem_id, gen_code, problem=problem_data)
                 val_ok = polygon_auto.setup_validator(problem_id, gen_code, overwrite=is_fresh_code or ignore_cache)
-                _log(f"✓ Bước 3: Checker {gen_code.checker_type} | Validator: {'Đã nạp' if val_ok else 'Bỏ qua'}", "3/10 Checker OK", 62)
+                _log(f"✓ Bước 3: Checker {final_checker} | Validator: {'Đã nạp' if val_ok else 'Bỏ qua'}", "3/10 Checker OK", 62)
 
                 # Step 4: Generator
                 _log("Bước 4/10: Nạp gen.cpp (C++23/17 + testlib.h) lên Polygon...", "4/10 Nạp gen.cpp", 66)

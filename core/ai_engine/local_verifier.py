@@ -30,6 +30,9 @@ class LocalVerifier:
         exp_tokens = expected.strip().split()
         act_tokens = actual.strip().split()
 
+        if "yesno" in chk or (exp_tokens and all(t.upper() in ("YES", "NO") for t in exp_tokens)):
+            return [t.upper() for t in exp_tokens] == [t.upper() for t in act_tokens]
+
         if "rcmp" in chk or "fcmp" in chk:
             if "rcmp" in chk:
                 if len(exp_tokens) != len(act_tokens):
@@ -56,6 +59,7 @@ class LocalVerifier:
         target_num_tests: int = 30,
         points_policy: str = "EACH_TEST",
         enable_validator: bool = True,
+        allow_early_abort: bool = True,
     ) -> GeneratedCode:
         """
         1. Compiles solution.cpp locally using g++ -O2 -std=c++20 (falls back to c++17 if needed).
@@ -177,8 +181,8 @@ class LocalVerifier:
             else:
                 code.validator_cpp = ""
 
-            # If there were compilation or sample WA errors, return early so AIPipeline self-healing can fix code immediately
-            if self.last_errors:
+            # If there were compilation or sample WA errors and retries remain, abort early for fast self-healing
+            if self.last_errors and allow_early_abort:
                 return code
 
             # Helper to validate input with validator.exe
@@ -354,6 +358,64 @@ class LocalVerifier:
                         [str(last_st), str(extra_seed), type_flag],
                         last_st,
                         f"Subtask {last_st} Extra Test ({extra_seed})",
+                    )
+
+            # 4.5 Deterministic fallback synthesis if generator failed or produced too few tests
+            if len(valid_tests) < target_num_tests:
+                import random
+                rng = random.Random(20261118)
+                base_samples = [s.input_text.strip() for s in problem.sample_tests if s.input_text.strip()]
+                base_template = base_samples[0] if base_samples else "3\n1 2 3"
+                lines = base_template.splitlines()
+                fallback_offset = 0
+                while len(valid_tests) < target_num_tests and fallback_offset < target_num_tests * 10:
+                    fallback_offset += 1
+                    st_idx = active_subtasks[(len(valid_tests)) % len(active_subtasks)].subtask_id
+                    mutated_lines = []
+                    for l_idx, raw_l in enumerate(lines):
+                        toks = raw_l.split()
+                        if toks and all(re.fullmatch(r"-?\d+", tok) for tok in toks):
+                            # Keep header/testcount line intact when len==1 on multi-line input, mutate payload tokens slightly
+                            if l_idx == 0 and len(lines) > 1 and len(toks) == 1:
+                                mutated_lines.append(raw_l)
+                            else:
+                                new_toks = [
+                                    str(int(tok) + rng.randint(1, 20) + fallback_offset if int(tok) >= 0 else int(tok) - rng.randint(1, 10))
+                                    for tok in toks
+                                ]
+                                mutated_lines.append(" ".join(new_toks))
+                        else:
+                            mutated_lines.append(raw_l)
+                    cand_inp = "\n".join(mutated_lines).strip() + "\n"
+                    if cand_inp in seen_inputs:
+                        cand_toks = base_template.split()
+                        if cand_toks and cand_toks[-1].lstrip("-").isdigit():
+                            prefix = " ".join(lines[:-1])
+                            last_tokens = lines[-1].split()
+                            last_tokens[-1] = str(int(last_tokens[-1]) + fallback_offset)
+                            cand_inp = ((prefix + "\n") if prefix else "") + " ".join(last_tokens) + "\n"
+                    if cand_inp in seen_inputs:
+                        continue
+                    seen_inputs.add(cand_inp)
+                    expected_out = ""
+                    if sol_compiled:
+                        try:
+                            s_res = subprocess.run([str(sol_exe)], input=cand_inp, text=True, capture_output=True, timeout=5)
+                            if s_res.returncode == 0:
+                                expected_out = s_res.stdout.strip()
+                        except Exception:
+                            pass
+                    valid_tests.append(
+                        TestCase(
+                            test_index=len(valid_tests) + 1,
+                            input_data=cand_inp,
+                            expected_output=expected_out,
+                            description=f"Subtask {st_idx} Fallback Test {len(valid_tests) + 1}",
+                            subtask_id=st_idx,
+                            group=f"sub{st_idx}",
+                            points=0.0,
+                            is_sample=False,
+                        )
                     )
 
             # 5. Trim if exceeded
